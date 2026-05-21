@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LLM API 请求流程演示</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #dbe3ee;
+      --active: #2563eb;
+      --done: #14b8a6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .wrap {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+    .intro {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .step {
+      min-height: 118px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      transition: transform .25s ease, border-color .25s ease, background .25s ease;
+      box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+    }
+    .step.active {
+      transform: translateY(-8px);
+      border-color: var(--active);
+      background: #eff6ff;
+    }
+    .step.done {
+      border-color: #99f6e4;
+      background: #f0fdfa;
+    }
+    .num {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: #94a3b8;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .active .num { background: var(--active); }
+    .done .num { background: var(--done); }
+    .name {
+      font-size: 16px;
+      font-weight: 800;
+      margin-bottom: 7px;
+    }
+    .desc {
+      font-size: 13px;
+      line-height: 1.5;
+      color: #475569;
+    }
+    .detail {
+      display: grid;
+      grid-template-columns: .9fr 1.1fr;
+      gap: 14px;
+      align-items: stretch;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+    }
+    .card h2 {
+      font-size: 18px;
+      margin: 0 0 10px;
+    }
+    .card p {
+      color: #334155;
+      line-height: 1.7;
+      font-size: 14px;
+      margin: 0;
+    }
+    pre {
+      margin: 0;
+      overflow: auto;
+      min-height: 170px;
+      color: #dbeafe;
+      background: #0f172a;
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .controls {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button.primary {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+    }
+    @media (max-width: 820px) {
+      .flow { grid-template-columns: 1fr; }
+      .detail { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>一次 API 调用怎样完成？</h1>
+    <p class="intro">每一步都不复杂，但顺序很重要。Agent 的各种高级能力，都会围绕这条请求链路继续扩展。</p>
+
+    <div class="flow" id="flow">
+      <div class="step" data-step="0"><div class="num">1</div><div class="name">配置参数</div><div class="desc">准备 base_url、api_key 和 model_name。</div></div>
+      <div class="step" data-step="1"><div class="num">2</div><div class="name">组织上下文</div><div class="desc">把 system、user、历史回复放进 messages。</div></div>
+      <div class="step" data-step="2"><div class="num">3</div><div class="name">发送请求</div><div class="desc">程序把请求提交给模型 API 服务。</div></div>
+      <div class="step" data-step="3"><div class="num">4</div><div class="name">模型生成</div><div class="desc">模型读取上下文，生成下一段回答。</div></div>
+      <div class="step" data-step="4"><div class="num">5</div><div class="name">处理返回</div><div class="desc">程序取出回复，展示或交给下一步流程。</div></div>
+    </div>
+
+    <div class="detail">
+      <div class="card">
+        <h2 id="title">配置参数</h2>
+        <p id="desc">程序先知道服务在哪里、自己有没有权限、这次要用哪个模型。没有这些配置，请求就不知道该发给谁，也无法通过鉴权。</p>
+        <div class="controls">
+          <button class="primary" id="next">下一步</button>
+          <button id="reset">重播</button>
+        </div>
+      </div>
+      <div class="card">
+        <pre id="code">base_url   = "https://api.example.com/v1"
+api_key    = "YOUR_API_KEY"
+model_name = "teaching-model"</pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const data = [
+      {
+        title: "配置参数",
+        desc: "程序先知道服务在哪里、自己有没有权限、这次要用哪个模型。没有这些配置，请求就不知道该发给谁，也无法通过鉴权。",
+        code: 'base_url   = "https://api.example.com/v1"\napi_key    = "YOUR_API_KEY"\nmodel_name = "teaching-model"'
+      },
+      {
+        title: "组织上下文",
+        desc: "把角色设定、用户问题和必要的历史消息放进 messages。模型会根据这些内容生成回答。",
+        code: '[\n  {"role": "system", "content": "你是旅行规划助手"},\n  {"role": "user", "content": "我想去杭州玩两天"}\n]'
+      },
+      {
+        title: "发送请求",
+        desc: "程序把 model、messages 等字段组成请求体，并带上 api_key 发送给 base_url 指向的服务。",
+        code: '{\n  "model": "teaching-model",\n  "messages": [...]\n}\n\nAuthorization: Bearer YOUR_API_KEY'
+      },
+      {
+        title: "模型生成",
+        desc: "模型读取上下文，判断用户需要什么，然后生成下一段最合适的内容。",
+        code: 'LLM sees:\n- system rules\n- user question\n- conversation history\n\nLLM generates:\n"可以安排西湖、灵隐寺..."'
+      },
+      {
+        title: "处理返回",
+        desc: "程序从返回数据中取出模型回复。后续可以直接展示，也可以继续放入 Agent 流程。",
+        code: '{\n  "role": "assistant",\n  "content": "可以安排西湖、灵隐寺和河坊街..."\n}'
+      }
+    ];
+
+    let step = 0;
+    const steps = [...document.querySelectorAll(".step")];
+    const title = document.getElementById("title");
+    const desc = document.getElementById("desc");
+    const code = document.getElementById("code");
+
+    function render() {
+      steps.forEach((el, index) => {
+        el.classList.toggle("done", index < step);
+        el.classList.toggle("active", index === step);
+      });
+      title.textContent = data[step].title;
+      desc.textContent = data[step].desc;
+      code.textContent = data[step].code;
+    }
+    document.getElementById("next").addEventListener("click", () => {
+      step = Math.min(step + 1, data.length - 1);
+      render();
+    });
+    document.getElementById("reset").addEventListener("click", () => {
+      step = 0;
+      render();
+    });
+    render();
+  </script>
+</body>
+</html>

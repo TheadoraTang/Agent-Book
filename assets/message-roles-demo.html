@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>messages 与 role 流程演示</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #dbe3ee;
+      --system: #2563eb;
+      --user: #f97316;
+      --assistant: #14b8a6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      font-size: 22px;
+      margin: 0 0 6px;
+      letter-spacing: 0;
+    }
+    .intro {
+      color: var(--muted);
+      margin: 0 0 18px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 16px;
+      align-items: stretch;
+    }
+    .panel {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+      overflow: hidden;
+    }
+    .panel-title {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-weight: 700;
+    }
+    .stack {
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+    .msg {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      gap: 10px;
+      align-items: start;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      opacity: .45;
+      transform: translateY(8px);
+      transition: opacity .35s ease, transform .35s ease, border-color .35s ease;
+    }
+    .msg.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .role {
+      border-radius: 8px;
+      color: #fff;
+      text-align: center;
+      padding: 7px 6px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .system .role { background: var(--system); }
+    .user .role { background: var(--user); }
+    .assistant .role { background: var(--assistant); }
+    .content {
+      font-size: 14px;
+      line-height: 1.55;
+      color: #334155;
+    }
+    .explain {
+      padding: 18px;
+      display: grid;
+      align-content: center;
+      min-height: 290px;
+    }
+    .big {
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 10px;
+      color: var(--ink);
+    }
+    .body {
+      color: #334155;
+      line-height: 1.8;
+      font-size: 15px;
+    }
+    .controls {
+      display: flex;
+      gap: 8px;
+      padding: 12px 14px;
+      border-top: 1px solid var(--line);
+      background: #f8fafc;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button.primary {
+      color: #fff;
+      background: #0f172a;
+      border-color: #0f172a;
+    }
+    @media (max-width: 760px) {
+      .layout { grid-template-columns: 1fr; }
+      .msg { grid-template-columns: 78px 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>messages：把一段对话整理给模型看</h1>
+    <p class="intro">每条消息都有 role。role 帮模型区分：这是规则、用户需求，还是模型之前说过的话。</p>
+    <div class="layout">
+      <div class="panel">
+        <div class="panel-title">messages 列表</div>
+        <div class="stack">
+          <div class="msg system" data-step="0">
+            <div class="role">system</div>
+            <div class="content">你是 TravelPlanAgent，擅长制定清晰、可靠的旅行计划。</div>
+          </div>
+          <div class="msg user" data-step="1">
+            <div class="role">user</div>
+            <div class="content">我想去杭州玩两天，喜欢轻松一点。</div>
+          </div>
+          <div class="msg assistant" data-step="2">
+            <div class="role">assistant</div>
+            <div class="content">可以，我会避免太赶，优先安排西湖周边和美食街区。</div>
+          </div>
+          <div class="msg user" data-step="3">
+            <div class="role">user</div>
+            <div class="content">第二天想加一个适合拍照的地方。</div>
+          </div>
+        </div>
+        <div class="controls">
+          <button class="primary" id="next">下一步</button>
+          <button id="reset">重播</button>
+        </div>
+      </div>
+      <div class="panel explain">
+        <div class="big" id="title">system：先定规则</div>
+        <div class="body" id="body">模型会先看到它应该扮演什么角色、回答时要遵守什么边界。Agent 的性格和工作方式，通常从这里开始设定。</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const copy = [
+      ["system：先定规则", "模型会先看到它应该扮演什么角色、回答时要遵守什么边界。Agent 的性格和工作方式，通常从这里开始设定。"],
+      ["user：提出需求", "用户消息是任务入口。它可能很完整，也可能很模糊，Agent 要根据上下文决定直接回答、追问，还是调用工具。"],
+      ["assistant：留下历史", "把模型之前说过的话放回 messages，模型才知道自己刚才承诺过什么，多轮对话才会连续。"],
+      ["新的 user：接着聊", "最后这句不是孤立问题。因为前面有历史，模型知道“第二天”指的是杭州两日游的第二天。"]
+    ];
+    let step = 0;
+    const msgs = [...document.querySelectorAll(".msg")];
+    const title = document.getElementById("title");
+    const body = document.getElementById("body");
+
+    function render() {
+      msgs.forEach((el, index) => el.classList.toggle("show", index <= step));
+      title.textContent = copy[step][0];
+      body.textContent = copy[step][1];
+    }
+    document.getElementById("next").addEventListener("click", () => {
+      step = Math.min(step + 1, copy.length - 1);
+      render();
+    });
+    document.getElementById("reset").addEventListener("click", () => {
+      step = 0;
+      render();
+    });
+    render();
+  </script>
+</body>
+</html>
+
