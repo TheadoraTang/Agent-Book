@@ -17,8 +17,6 @@ API 不是一个神秘概念。你可以先把它理解成：程序和模型服�
 3. `messages` 为什么是多轮对话和 Agent 开发的核心结构。
 4. `system`、`user`、`assistant` 三种 role 各自承担什么职责。
 
-本章先不写实战代码。我们先把调用链路看明白，下一步再动手实现 TravelPlanAgent v0.1。
-
 ## 从网页聊天到程序调用
 
 当你在网页里使用大模型时，很多细节被界面藏起来了。你只看到输入框和回答区，看不到背后的请求、鉴权、模型选择和返回数据。
@@ -62,7 +60,7 @@ LLM API 调用里有三个非常常见、也非常容易混淆的参数：
 https://api.example.com/v1
 ```
 
-在课程中，具体地址应以平台或教师提供的配置为准。学习时不需要死记某个地址，重点是理解它的作用：告诉程序去哪里请求模型服务。
+在课程中，具体地址应以你实际使用的为准。学习时不需要死记某个地址，重点是理解它的作用：告诉程序去哪里请求模型服务。
 
 ### api_key：证明你有权限
 
@@ -76,13 +74,7 @@ https://api.example.com/v1
 - 不要贴到截图或课程公开文本里。
 - 更推荐通过环境变量或平台配置读取。
 
-在教材代码里，如果需要展示 `api_key`，应使用占位符：
-
-```text
-YOUR_API_KEY
-```
-
-这不是为了“麻烦”，而是为了避免学生形成把密钥直接写死在代码里的习惯。
+在教材代码中，为了方便你更改，我们使用了占位符`YOUR_API_KEY`展示 `api_key`，但你在实际运行时应该替换成从安全位置读取的密钥
 
 ### model_name：要调用哪个模型
 
@@ -163,7 +155,7 @@ YOUR_API_KEY
 ```sbs-iframe
 src: assets/message-roles-demo.html
 title: messages 与 role 流程演示
-height: 430px
+height: 550px
 ```
 
 ### system：设置规则和身份
@@ -222,7 +214,7 @@ height: 430px
 ```sbs-iframe
 src: assets/api-request-flow-demo.html
 title: LLM API 请求流程演示
-height: 430px
+height: 500px
 ```
 
 你可以把这个过程记成一句话：
