@@ -89,7 +89,31 @@ https://api.example.com/v1
 - 需要低延迟体验：优先考虑响应速度。
 - 需要处理长资料：关注上下文窗口。
 
-课程初期应优先使用一个稳定、容易配置、适合教学的模型。等学生理解 API 调用后，再讨论模型选择的权衡。
+在本课程中，我们对模型没有硬性的要求，只要你觉得可以用来教学和练习就好。
+
+### 常见 API 推荐
+
+刚开始学习时，最容易卡住的不是“模型原理”，而是：我到底该去哪里申请一个能用的 API？
+
+下面这些都是比较常见、面向大众开发者开放的大模型 API。它们不是唯一选择，也不是性能排名，而是适合作为学习、练习和课程项目开发时的参考清单。实际使用前，请以各平台控制台和官方文档中的最新模型名、价格、额度和地区限制为准。
+
+| API 平台 | 常见模型或系列 | 适合场景 | 接入特点 | 官方文档 |
+| --- | --- | --- | --- | --- |
+| OpenAI API | GPT 系列、推理模型、多模态模型 | 通用对话、代码生成、结构化输出、Agent 原型开发 | 生态成熟，官方 SDK 和第三方框架支持广；使用 `Authorization: Bearer OPENAI_API_KEY` 鉴权 | [OpenAI API Reference](https://developers.openai.com/api/reference/overview) |
+| Anthropic Claude API | Claude 系列 | 长文本理解、写作、代码协作、复杂任务分析 | 使用 Messages API，直接调用时常见鉴权头包括 `x-api-key` 和 `anthropic-version` | [Claude API Docs](https://platform.claude.com/docs/en/api/overview) |
+| Google Gemini API | Gemini 系列 | 多模态输入、Google 生态项目、原型验证 | 可在 Google AI Studio 创建 API Key，官方 SDK 会读取 `GEMINI_API_KEY` 或 `GOOGLE_API_KEY` | [Gemini API Docs](https://ai.google.dev/api) |
+| DeepSeek API | DeepSeek V 系列、推理模型 | 中文场景、代码、推理、低成本练习 | 支持 OpenAI/Anthropic 兼容格式；OpenAI 兼容 `base_url` 常用 `https://api.deepseek.com` | [DeepSeek API Docs](https://api-docs.deepseek.com/) |
+| 阿里云百炼 / 通义千问 API | Qwen / 千问系列 | 国内开发者、中文任务、企业云环境、Agent 应用 | 支持 OpenAI 兼容接口；北京地域常用 `https://dashscope.aliyuncs.com/compatible-mode/v1` | [阿里云百炼 OpenAI 兼容文档](https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope) |
+| Kimi / Moonshot API | Kimi / Moonshot 系列 | 长文本阅读、文档分析、中文问答 | 提供 OpenAI 兼容 HTTP API；SDK 调用时 `base_url` 常用 `https://api.moonshot.ai/v1` | [Kimi API Overview](https://platform.kimi.ai/docs/api/overview) |
+| 智谱 GLM / BigModel API | GLM 系列 | 中文任务、通用对话、工具调用、国内应用集成 | 支持 OpenAI SDK 兼容接入；常用 `base_url` 为 `https://open.bigmodel.cn/api/paas/v4/` | [智谱 OpenAI API 兼容文档](https://docs.bigmodel.cn/cn/guide/develop/openai/introduction) |
+
+对初学者来说，推荐优先选择“官方平台 + 官方文档 + 官方 API Key”。尽量不要使用来路不明的中转站、共享密钥或所谓“低价代理”。这些服务可能存在稳定性、隐私、安全和模型替换风险，出了问题也很难排查。
+
+如果你只是完成本课程的 TravelPlanAgent 练习，可以用下面三个标准选择：
+
+1. 文档是否清楚，能不能直接看到 `base_url`、`api_key`、`model_name` 怎么填。
+2. 是否支持常见 SDK 或 OpenAI 兼容格式，方便我们写统一的教学代码。
+3. 价格、额度和地区访问是否适合你的学习环境。
 
 ## messages：把对话交给模型的方式
 
@@ -331,4 +355,3 @@ TravelPlanAgent v0.1 的目标非常简单：
 - `system`、`user`、`assistant` 让模型区分规则、用户输入和历史回复。
 
 下一步进入实战部分时，我们会把这些概念落到代码里，实现 TravelPlanAgent v0.1：一个能通过命令行和 LLM 对话的最小 Agent。
-
