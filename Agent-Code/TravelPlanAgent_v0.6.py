@@ -10,7 +10,7 @@ import numpy as np
 
 
 BASE_URL = "https://chat.ecnu.edu.cn/open/api/v1"
-API_KEY = "sk-4b905783f8ab4fed9f7c1879aaf2ae58"
+API_KEY = ""
 MODEL_NAME = "ecnu-plus"
 CHAT_COMPLETIONS_URL = f"{BASE_URL}/chat/completions"
 MAX_HISTORY_ROUNDS = 5
