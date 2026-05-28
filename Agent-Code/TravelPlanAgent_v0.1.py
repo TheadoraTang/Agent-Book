@@ -1,7 +1,4 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Any, Optional
+﻿from dataclasses import dataclass
 from openai import OpenAI
 
 
@@ -23,11 +20,11 @@ class LLMClient:
     v0.1 使用 OpenAI Python SDK，而不是手写 urllib HTTP 请求。
     """
 
-    def __init__(self, config: Optional[LLMConfig] = None, openai_client: Any = None) -> None:
+    def __init__(self, config: LLMConfig | None = None, openai_client: object | None = None) -> None:
         self.config = config or LLMConfig()
         self.openai_client = openai_client
 
-    def chat(self, messages: list[dict[str, str]], temperature: Optional[float] = None) -> str:
+    def chat(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
         if self.config.api_key in ["", "YOUR_API_KEY"]:
             return "请先把 LLMConfig 里的 api_key 替换成真实密钥。"
 
@@ -44,7 +41,7 @@ class LLMClient:
         except Exception as error:
             return f"调用模型时出现错误：{error}"
 
-    def _get_openai_client(self) -> Any:
+    def _get_openai_client(self) -> object:
         if self.openai_client is not None:
             return self.openai_client
 
@@ -64,7 +61,7 @@ class TravelPlanAgent:
     3. 调用 LLMClient 得到模型回复。
     """
 
-    def __init__(self, llm_client: Optional[LLMClient] = None) -> None:
+    def __init__(self, llm_client: LLMClient | None = None) -> None:
         self.llm_client = llm_client or LLMClient()
 
     def run(self, user_input: str) -> str:

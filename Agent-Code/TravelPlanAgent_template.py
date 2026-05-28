@@ -1,4 +1,4 @@
-"""
+﻿"""
 TravelPlanAgent 架构模板
 
 这个文件不是某一个版本的完整实现，而是一份“长期骨架”：
@@ -16,7 +16,6 @@ TravelPlanAgent 架构模板
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Optional
 from openai import OpenAI
 
 
@@ -34,11 +33,11 @@ class LLMConfig:
 class LLMClient:
     """统一封装 LLM 请求，避免 Agent 主流程直接处理 HTTP 细节。"""
 
-    def __init__(self, config: Optional[LLMConfig] = None, openai_client: Any = None) -> None:
+    def __init__(self, config: LLMConfig | None = None, openai_client: object | None = None) -> None:
         self.config = config or LLMConfig()
         self.openai_client = openai_client
 
-    def chat(self, messages: list[dict[str, str]], temperature: Optional[float] = None) -> str:
+    def chat(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
         """发送 messages 给模型，并返回 assistant 的文本内容。
 
         TODO(v0.1)：这是第一个需要学生真正补全和理解的模型调用入口。
@@ -64,7 +63,7 @@ class LLMClient:
         except Exception as error:
             return f"调用模型时出现错误：{error}"
 
-    def _get_openai_client(self) -> Any:
+    def _get_openai_client(self) -> object:
         if self.openai_client is not None:
             return self.openai_client
 
@@ -110,7 +109,7 @@ class ToolResult:
     tool_name: str
     success: bool
     content: str
-    raw_data: Any = None
+    raw_data: object = None
 
 
 class BaseTool:
@@ -119,7 +118,7 @@ class BaseTool:
     name: str = "base_tool"
     description: str = "基础工具"
 
-    def run(self, arguments: dict[str, Any]) -> ToolResult:
+    def run(self, arguments: dict[str, object]) -> ToolResult:
         raise NotImplementedError
 
 
@@ -140,7 +139,7 @@ class WeatherTool(BaseTool):
         "广州": "广州今天较热，可能有短时阵雨，建议准备雨具并减少暴晒步行。",
     }
 
-    def run(self, arguments: dict[str, Any]) -> ToolResult:
+    def run(self, arguments: dict[str, object]) -> ToolResult:
         city = str(arguments.get("city", "")).strip()
         if not city:
             return ToolResult(self.name, False, "缺少 city 参数，无法查询天气。")
@@ -190,7 +189,7 @@ class SubAgentResult:
 
     agent_name: str
     role: str
-    task: dict[str, Any]
+    task: dict[str, object]
     success: bool
     observation: str
 
@@ -204,7 +203,7 @@ class BaseSubAgent:
     name: str = "base_sub_agent"
     role: str = "基础子 Agent"
 
-    def run(self, task: dict[str, Any], context: dict[str, Any]) -> SubAgentResult:
+    def run(self, task: dict[str, object], context: dict[str, object]) -> SubAgentResult:
         raise NotImplementedError
 
 
@@ -217,7 +216,7 @@ class WeatherSubAgent(BaseSubAgent):
     def __init__(self, weather_tool: WeatherTool) -> None:
         self.weather_tool = weather_tool
 
-    def run(self, task: dict[str, Any], context: dict[str, Any]) -> SubAgentResult:
+    def run(self, task: dict[str, object], context: dict[str, object]) -> SubAgentResult:
         result = self.weather_tool.run(task.get("arguments", {}))
         return SubAgentResult(
             agent_name=self.name,
@@ -237,7 +236,7 @@ class KnowledgeSubAgent(BaseSubAgent):
     def __init__(self, retriever: TravelKnowledgeRetriever) -> None:
         self.retriever = retriever
 
-    def run(self, task: dict[str, Any], context: dict[str, Any]) -> SubAgentResult:
+    def run(self, task: dict[str, object], context: dict[str, object]) -> SubAgentResult:
         query = task.get("query") or context.get("user_input", "")
         chunks = self.retriever.retrieve(query)
         observation = "\n".join(chunks) if chunks else "没有检索到相关旅行知识。"
@@ -259,7 +258,7 @@ class ItinerarySubAgent(BaseSubAgent):
     name = "itinerary_agent"
     role = "负责综合天气、知识库和用户需求生成行程草案"
 
-    def run(self, task: dict[str, Any], context: dict[str, Any]) -> SubAgentResult:
+    def run(self, task: dict[str, object], context: dict[str, object]) -> SubAgentResult:
         previous_observations = context.get("observations", [])
         if not previous_observations:
             observation = "暂时没有可综合的信息，需要先查询天气或检索旅行知识。"
@@ -285,7 +284,7 @@ class DirectAnswerSubAgent(BaseSubAgent):
     name = "direct_answer_agent"
     role = "负责无需外部工具的直接回答"
 
-    def run(self, task: dict[str, Any], context: dict[str, Any]) -> SubAgentResult:
+    def run(self, task: dict[str, object], context: dict[str, object]) -> SubAgentResult:
         return SubAgentResult(
             agent_name=self.name,
             role=self.role,
@@ -298,15 +297,15 @@ class DirectAnswerSubAgent(BaseSubAgent):
 class TravelPlanner:
     """旅行任务规划器，对应 TravelPlanAgent v0.7。"""
 
-    def build_sub_tasks(self, user_input: str) -> list[dict[str, Any]]:
+    def build_sub_tasks(self, user_input: str) -> list[dict[str, object]]:
         """把用户需求拆成若干子 Agent 任务。
 
         TODO(v0.7)：可以改为让 LLM 输出结构化 JSON 任务列表。
         """
-        tasks: list[dict[str, Any]] = []
+        tasks: list[dict[str, object]] = []
         city = self.extract_city(user_input)
 
-        if any(keyword in user_input for keyword in ["天气", "下雨", "气温", "穿什么"]):
+        if object(keyword in user_input for keyword in ["天气", "下雨", "气温", "穿什么"]):
             tasks.append(
                 {
                     "agent": "weather_agent",
@@ -315,7 +314,7 @@ class TravelPlanner:
                 }
             )
 
-        if any(keyword in user_input for keyword in ["攻略", "路线", "行程", "怎么玩", "亲子", "老人", "预算"]):
+        if object(keyword in user_input for keyword in ["攻略", "路线", "行程", "怎么玩", "亲子", "老人", "预算"]):
             tasks.append(
                 {
                     "agent": "knowledge_agent",
@@ -324,7 +323,7 @@ class TravelPlanner:
                 }
             )
 
-        if any(keyword in user_input for keyword in ["攻略", "路线", "行程", "计划", "安排", "几日游"]):
+        if object(keyword in user_input for keyword in ["攻略", "路线", "行程", "计划", "安排", "几日游"]):
             tasks.append(
                 {
                     "agent": "itinerary_agent",
@@ -344,7 +343,7 @@ class TravelPlanner:
 
         return tasks
 
-    def build_plan_steps(self, user_input: str) -> list[dict[str, Any]]:
+    def build_plan_steps(self, user_input: str) -> list[dict[str, object]]:
         """兼容旧命名：早期版本可以把子任务理解为计划步骤。"""
         return self.build_sub_tasks(user_input)
 
@@ -360,11 +359,11 @@ class TravelPlanAgent:
 
     def __init__(
         self,
-        llm_client: Optional[LLMClient] = None,
-        memory: Optional[ConversationMemory] = None,
-        planner: Optional[TravelPlanner] = None,
-        retriever: Optional[TravelKnowledgeRetriever] = None,
-        tools: Optional[list[BaseTool]] = None,
+        llm_client: LLMClient | None = None,
+        memory: ConversationMemory | None = None,
+        planner: TravelPlanner | None = None,
+        retriever: TravelKnowledgeRetriever | None = None,
+        tools: list[BaseTool] | None = None,
     ) -> None:
         self.llm_client = llm_client or LLMClient()
         self.memory = memory or ConversationMemory()
@@ -408,15 +407,15 @@ class TravelPlanAgent:
         self.memory.add_assistant_message(answer)
         return answer
 
-    def think(self, user_input: str) -> list[dict[str, Any]]:
+    def think(self, user_input: str) -> list[dict[str, object]]:
         """Think：把用户输入拆成需要哪些子 Agent 完成的任务。"""
         # TODO(v0.7)：这里可以升级为让 LLM 输出结构化 JSON 子任务列表。
         return self.planner.build_sub_tasks(user_input)
 
-    def dispatch(self, tasks: list[dict[str, Any]], user_input: str) -> list[dict[str, Any]]:
+    def dispatch(self, tasks: list[dict[str, object]], user_input: str) -> list[dict[str, object]]:
         """Dispatch：主 Agent 调度子 Agent，并收集观察结果。"""
-        observations: list[dict[str, Any]] = []
-        context: dict[str, Any] = {"user_input": user_input, "observations": observations}
+        observations: list[dict[str, object]] = []
+        context: dict[str, object] = {"user_input": user_input, "observations": observations}
 
         for task in tasks:
             agent_name = task.get("agent", "")
@@ -447,13 +446,13 @@ class TravelPlanAgent:
 
         return observations
 
-    def act_and_observe(self, steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def act_and_observe(self, steps: list[dict[str, object]]) -> list[dict[str, object]]:
         """Act + Observe：早期版本的工具执行入口。
 
         v0.4-v0.6 可以先使用这个方法理解工具调用；
         v0.7 之后推荐使用 dispatch 调度子 Agent。
         """
-        observations: list[dict[str, Any]] = []
+        observations: list[dict[str, object]] = []
 
         for step in steps:
             step_type = step.get("type")
@@ -502,7 +501,7 @@ class TravelPlanAgent:
 
         return observations
 
-    def final_answer(self, user_input: str, observations: list[dict[str, Any]]) -> str:
+    def final_answer(self, user_input: str, observations: list[dict[str, object]]) -> str:
         """Final Answer：把用户问题、历史上下文和子 Agent 观察结果交给 LLM。"""
         observation_text = json.dumps(observations, ensure_ascii=False, indent=2)
         prompt = f"""
@@ -546,3 +545,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
