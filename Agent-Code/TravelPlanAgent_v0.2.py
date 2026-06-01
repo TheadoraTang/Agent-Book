@@ -1,78 +1,120 @@
-import json
-import urllib.error
-import urllib.request
-
-
-BASE_URL = "https://chat.ecnu.edu.cn/open/api/v1"
-API_KEY = ""
-MODEL_NAME = "ecnu-max"
-CHAT_COMPLETIONS_URL = f"{BASE_URL}/chat/completions"
+from openai import OpenAI
 
 SYSTEM_PROMPT = """
-你是 TravelPlanAgent，一个友好、可靠、适合初学者理解的旅行规划助手。
-你的回答需要满足：
-1. 优先围绕旅行目的地、时间、预算、交通、天气、景点和注意事项展开。
-2. 语气清晰、亲切，不夸大，不编造无法确定的信息。
-3. 输出尽量包含三个部分：建议、理由、提醒。
+你是 TravelPlanAgent，一个专业、耐心、诚实的旅行规划助手。
+
+你的目标不是简单闲聊，而是帮助用户把模糊的旅行想法整理成可以继续规划的需求。
+
+你需要遵守以下规则：
+1. 优先识别目的地、出行天数、预算、同行人、兴趣偏好和旅行节奏。
+2. 如果缺少关键条件，先用简短问题追问，不要硬编完整计划。
+3. 不编造实时天气、票价、营业时间、交通状态等可能变化的信息。
+4. 回答要清晰、亲切，适合初学者观察 Prompt 对模型行为的影响。
+5. 如果用户只是闲聊，也要自然回应，但尽量把话题温和地带回旅行规划。
 """
 
-
-def call_llm(messages, temperature=0.7):
-    if API_KEY == "YOUR_API_KEY":
-        return "请先把文件顶部的 API_KEY 替换成教师提供的真实密钥。"
-
-    payload = {
-        "model": MODEL_NAME,
-        "messages": messages,
-        "temperature": temperature,
-    }
-    request = urllib.request.Request(
-        CHAT_COMPLETIONS_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {API_KEY}",
-        },
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            result = json.loads(response.read().decode("utf-8"))
-            return result["choices"][0]["message"]["content"]
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", errors="ignore")
-        return f"API 请求失败，状态码：{error.code}\n{detail}"
-    except Exception as error:
-        return f"调用模型时出现错误：{error}"
+class LLMConfig:
+    """
+    集中保存模型调用需要的配置：base_url、api_key、model_name。
+    """
+    base_url: str = "https://chat.ecnu.edu.cn/open/api/v1"
+    api_key: str = ""
+    model_name: str = "ecnu-max"
+    temperature: float = 0.7
+    timeout_seconds: int = 300
 
 
-def main():
-    print("TravelPlanAgent v0.2：加入固定角色和输出约束")
+class LLMClient:
+    """
+    用于封装 LLM API 请求。
+    """
+    def __init__(self, config: LLMConfig | None = None, openai_client: object | None = None) -> None:
+        self.config = config or LLMConfig()
+        self.openai_client = openai_client
+
+    def chat(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
+        if self.config.api_key in ["", "YOUR_API_KEY"]:
+            return "请先把 LLMConfig 里的 api_key 替换成真实密钥。"
+
+        try:
+            openai_client = self._get_openai_client()
+            completion = openai_client.chat.completions.create(
+                model=self.config.model_name,
+                messages=messages,
+                temperature=self.config.temperature if temperature is None else temperature,
+            )
+            return completion.choices[0].message.content or ""
+        except ImportError:
+            return "当前环境缺少 openai 包，请先运行：pip install openai"
+        except Exception as error:
+            return f"调用模型时出现错误：{error}"
+
+    def _get_openai_client(self) -> object:
+        if self.openai_client is not None:
+            return self.openai_client
+
+        self.openai_client = OpenAI(
+            api_key=self.config.api_key,
+            base_url=self.config.base_url,
+            timeout=self.config.timeout_seconds,
+        )
+        return self.openai_client
+
+
+class TravelPlanAgent:
+    """
+    TravelPlanAgent v0.2：优化 System Prompt 和 User Prompt。
+    重点观察 Prompt 如何让模型更像旅行规划助手。
+    """
+
+    def __init__(self, llm_client: LLMClient | None = None, system_prompt: str = SYSTEM_PROMPT) -> None:
+        self.llm_client = llm_client or LLMClient()
+        self.system_prompt = system_prompt
+
+    def run(self, user_input: str) -> str:
+        messages = self.build_messages(user_input)
+        return self.llm_client.chat(messages)
+
+    def build_messages(self, user_input: str) -> list[dict[str, str]]:
+        return [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": self.build_user_prompt(user_input)},
+        ]
+
+    def build_user_prompt(self, user_input: str) -> str:
+        return f"""
+            请根据下面的用户输入，像旅行规划助手一样回应。
+            
+            用户输入：
+            {user_input}
+            
+            回答时请注意：
+            1. 先判断用户信息是否足够开始规划。
+            2. 如果信息足够，给出初步建议和理由。
+            3. 如果信息不足，优先追问最关键的 2 到 3 个问题。
+            4. 不要输出 JSON，本版本重点观察自然语言 Prompt 优化效果。
+            """
+
+
+def main() -> None:
+    print("TravelPlanAgent v0.2：优化 System Prompt 和 User Prompt")
     print("输入 exit、quit 或 退出 可以结束对话。")
 
+    agent = TravelPlanAgent()
 
-    user_input = input("\n你：").strip()
+    while True:
+        try:
+            user_input = input("\n你：").strip()
+        except EOFError:
+            print("\nTravelPlanAgent：输入已结束，下次旅行再见！")
+            break
 
-    messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_input},
-        ]
-    answer = call_llm(messages)
-    print(f"TravelPlanAgent：{answer}")
+        if user_input.lower() in ["exit", "quit"] or user_input == "退出":
+            print("TravelPlanAgent：下次旅行再见！")
+            break
 
-    # while True:
-    #     user_input = input("\n你：").strip()
-    #     # if user_input.lower() in ["exit", "quit"] or user_input == "退出":
-    #     #     print("TravelPlanAgent：下次旅行再见！")
-    #     #     break
-    #
-    #     messages = [
-    #         {"role": "system", "content": SYSTEM_PROMPT},
-    #         {"role": "user", "content": user_input},
-    #     ]
-    #     answer = call_llm(messages)
-    #     print(f"TravelPlanAgent：{answer}")
+        answer = agent.run(user_input)
+        print(f"TravelPlanAgent：{answer}")
 
 
 if __name__ == "__main__":

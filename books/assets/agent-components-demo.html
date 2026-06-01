@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent 的基本组成与工作过程</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --panel: #ffffff;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #dbe3ee;
+      --blue: #2563eb;
+      --teal: #0f766e;
+      --orange: #ea580c;
+      --purple: #7c3aed;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .wrap {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: 0; }
+    .intro { margin: 0 0 16px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+    .layout {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 16px;
+      align-items: stretch;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, .08);
+      overflow: hidden;
+    }
+    .panel-title { padding: 12px 14px; border-bottom: 1px solid var(--line); font-weight: 800; }
+    .flow { display: grid; gap: 10px; padding: 14px; }
+    .step {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      opacity: .42;
+      transform: translateX(-8px);
+      transition: opacity .28s ease, transform .28s ease, border-color .28s ease, background .28s ease;
+    }
+    .step.show { opacity: 1; transform: translateX(0); }
+    .step.active { border-color: var(--blue); background: #eff6ff; }
+    .tag {
+      padding: 6px 7px;
+      color: #fff;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .goal .tag { background: var(--orange); }
+    .think .tag { background: var(--blue); }
+    .tool .tag { background: var(--teal); }
+    .observe .tag { background: var(--purple); }
+    .answer .tag { background: #334155; }
+    .text { color: #334155; font-size: 14px; line-height: 1.55; }
+    .explain { padding: 18px; display: grid; align-content: center; min-height: 360px; }
+    .big { font-size: 28px; font-weight: 900; margin-bottom: 12px; }
+    .desc { color: #334155; line-height: 1.8; font-size: 15px; }
+    .controls { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--line); background: #f8fafc; }
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button.primary { color: #fff; background: var(--ink); border-color: var(--ink); }
+    @media (max-width: 780px) {
+      .layout { grid-template-columns: 1fr; }
+      .step { grid-template-columns: 78px 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Agent：围绕目标采取行动</h1>
+    <p class="intro">点击“下一步”，观察一个旅行 Agent 怎样从用户目标出发，选择行动，观察结果，再给出建议。</p>
+    <div class="layout">
+      <div class="panel">
+        <div class="panel-title">TravelPlanAgent 的一次工作过程</div>
+        <div class="flow">
+          <div class="step goal" data-step="0"><div class="tag">目标</div><div class="text">用户：我周末去杭州，帮我安排适合雨天的轻松行程。</div></div>
+          <div class="step think" data-step="1"><div class="tag">判断</div><div class="text">涉及实时天气，不能凭空生成。先查询杭州天气。</div></div>
+          <div class="step tool" data-step="2"><div class="tag">工具</div><div class="text">调用 weather_api 获取杭州天气信息。</div></div>
+          <div class="step observe" data-step="3"><div class="tag">观察</div><div class="text">天气工具返回：有阵雨，建议准备室内备选。</div></div>
+          <div class="step answer" data-step="4"><div class="tag">回复</div><div class="text">结合天气和用户偏好，生成节奏轻松、含室内备选的行程。</div></div>
+        </div>
+        <div class="controls">
+          <button class="primary" id="next">下一步</button>
+          <button id="reset">重播</button>
+        </div>
+      </div>
+      <div class="panel explain">
+        <div class="big" id="title">目标：先知道要完成什么</div>
+        <div class="desc" id="desc">Agent 不是漫无目的地运行。它从用户目标出发，理解目的地、时间、偏好和任务要求。</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const copy = [
+      ["目标：先知道要完成什么", "Agent 不是漫无目的地运行。它从用户目标出发，理解目的地、时间、偏好和任务要求。"],
+      ["判断：决定下一步行动", "问题涉及实时天气。可靠的 Agent 会意识到模型已有知识不够，需要调用工具。"],
+      ["工具：连接真实世界", "工具可以是天气 API、搜索、数据库或本地函数。Agent 只能调用系统允许的工具。"],
+      ["观察：读取行动结果", "工具结果会重新进入上下文。Agent 需要根据真实返回值调整计划，而不是忽略它。"],
+      ["回复：基于观察完成任务", "最终回答不是凭空生成，而是结合用户目标、Prompt 和工具结果组织出来的。"]
+    ];
+    let step = 0;
+    const steps = [...document.querySelectorAll(".step")];
+    const title = document.getElementById("title");
+    const desc = document.getElementById("desc");
+    function render() {
+      steps.forEach((item, index) => {
+        item.classList.toggle("show", index <= step);
+        item.classList.toggle("active", index === step);
+      });
+      title.textContent = copy[step][0];
+      desc.textContent = copy[step][1];
+    }
+    document.getElementById("next").addEventListener("click", () => {
+      step = Math.min(step + 1, steps.length - 1);
+      render();
+    });
+    document.getElementById("reset").addEventListener("click", () => {
+      step = 0;
+      render();
+    });
+    render();
+  </script>
+</body>
+</html>
+

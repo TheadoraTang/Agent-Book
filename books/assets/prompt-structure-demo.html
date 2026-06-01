@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prompt 结构组合演示</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #dbe3ee;
+      --blue: #2563eb;
+      --teal: #14b8a6;
+      --orange: #f97316;
+      --purple: #7c3aed;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .wrap {
+      max-width: 1020px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+    .intro {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      align-items: stretch;
+    }
+    .panel {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+      overflow: hidden;
+    }
+    .title {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-weight: 800;
+    }
+    .stack {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      opacity: .45;
+      transform: translateY(8px);
+      transition: opacity .25s ease, transform .25s ease, border-color .25s ease, background .25s ease;
+    }
+    .card.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .card.active {
+      border-color: var(--blue);
+      background: #eff6ff;
+    }
+    .label {
+      display: inline-block;
+      color: #fff;
+      border-radius: 8px;
+      padding: 5px 8px;
+      font-size: 13px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .system .label { background: var(--blue); }
+    .user .label { background: var(--orange); }
+    .tool .label { background: var(--teal); }
+    .output .label { background: var(--purple); }
+    .text {
+      color: #334155;
+      line-height: 1.6;
+      font-size: 14px;
+    }
+    .explain {
+      padding: 18px;
+      display: grid;
+      align-content: center;
+      min-height: 330px;
+    }
+    .big {
+      font-size: 28px;
+      font-weight: 900;
+      margin-bottom: 12px;
+    }
+    .desc {
+      color: #334155;
+      line-height: 1.8;
+      font-size: 15px;
+    }
+    .controls {
+      display: flex;
+      gap: 8px;
+      padding: 12px 14px;
+      border-top: 1px solid var(--line);
+      background: #f8fafc;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button.primary {
+      background: var(--ink);
+      color: #fff;
+      border-color: var(--ink);
+    }
+    @media (max-width: 780px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Prompt 不是一句话，而是一组上下文</h1>
+    <p class="intro">点击“下一步”，观察 System、User、Tool 和输出约束怎样一起组成模型真正看到的任务说明。</p>
+    <div class="layout">
+      <div class="panel">
+        <div class="title">模型看到的上下文包</div>
+        <div class="stack">
+          <div class="card system" data-step="0">
+            <span class="label">System</span>
+            <div class="text">你是 TravelPlanAgent，回答要清晰、诚实，不编造实时信息。</div>
+          </div>
+          <div class="card user" data-step="1">
+            <span class="label">User</span>
+            <div class="text">我想去成都玩三天，预算不高，喜欢小吃，不想太赶。</div>
+          </div>
+          <div class="card tool" data-step="2">
+            <span class="label">Tool</span>
+            <div class="text">天气工具返回：未来三天有小雨，适合安排一些室内备选。</div>
+          </div>
+          <div class="card output" data-step="3">
+            <span class="label">Output Rule</span>
+            <div class="text">请按“每日主题 / 上午 / 下午 / 晚上 / 提醒事项”输出。</div>
+          </div>
+        </div>
+        <div class="controls">
+          <button class="primary" id="next">下一步</button>
+          <button id="reset">重播</button>
+        </div>
+      </div>
+      <div class="panel explain">
+        <div class="big" id="title">System：先定工作方式</div>
+        <div class="desc" id="desc">System 像是 Agent 的工作守则。它告诉模型自己是谁、应该遵守什么边界、什么事情不能随便编。</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const copy = [
+      ["System：先定工作方式", "System 像是 Agent 的工作守则。它告诉模型自己是谁、应该遵守什么边界、什么事情不能随便编。"],
+      ["User：给出当前任务", "User 是用户真正提出的需求。Agent 要从中识别目的地、天数、预算、偏好和节奏要求。"],
+      ["Tool：带回真实世界的信息", "工具结果不是模型想出来的，而是外部系统返回的观察。模型应该基于这些信息调整回答。"],
+      ["Output Rule：约束回答形状", "输出规则让回答更稳定。后续程序要展示、保存或检查结果时，固定格式会非常有帮助。"]
+    ];
+    let step = 0;
+    const cards = [...document.querySelectorAll(".card")];
+    const title = document.getElementById("title");
+    const desc = document.getElementById("desc");
+    function render() {
+      cards.forEach((card, index) => {
+        card.classList.toggle("show", index <= step);
+        card.classList.toggle("active", index === step);
+      });
+      title.textContent = copy[step][0];
+      desc.textContent = copy[step][1];
+    }
+    document.getElementById("next").addEventListener("click", () => {
+      step = Math.min(step + 1, copy.length - 1);
+      render();
+    });
+    document.getElementById("reset").addEventListener("click", () => {
+      step = 0;
+      render();
+    });
+    render();
+  </script>
+</body>
+</html>
+

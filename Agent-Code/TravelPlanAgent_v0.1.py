@@ -1,23 +1,20 @@
-﻿from dataclasses import dataclass
-from openai import OpenAI
+﻿from openai import OpenAI
 
 
-@dataclass
 class LLMConfig:
     """
-    集中保存模型调用需要的配置。：base_url、api_key、model_name。
+    集中保存模型调用需要的配置：base_url、api_key、model_name。
     """
     base_url: str = "https://chat.ecnu.edu.cn/open/api/v1"
     api_key: str = ""
     model_name: str = "ecnu-max"
     temperature: float = 0.7
-    timeout_seconds: int = 60
+    timeout_seconds: int = 300
 
 
 class LLMClient:
     """
     用于封装 LLM API 请求。
-    v0.1 使用 OpenAI Python SDK，而不是手写 urllib HTTP 请求。
     """
 
     def __init__(self, config: LLMConfig | None = None, openai_client: object | None = None) -> None:

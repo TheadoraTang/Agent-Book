@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>上下文窗口与历史消息裁剪演示</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --panel: #ffffff;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #dbe3ee;
+      --system: #2563eb;
+      --user: #ea580c;
+      --assistant: #0f766e;
+      --removed: #94a3b8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 20px; }
+    h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: 0; }
+    .intro { margin: 0 0 16px; color: var(--muted); line-height: 1.6; font-size: 14px; }
+    .layout { display: grid; grid-template-columns: 1.15fr .85fr; gap: 16px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, .08);
+      overflow: hidden;
+    }
+    .head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-weight: 800;
+    }
+    .count { color: var(--muted); font-size: 13px; font-weight: 700; }
+    .messages { display: grid; gap: 8px; padding: 14px; min-height: 330px; align-content: start; }
+    .msg {
+      display: grid;
+      grid-template-columns: 86px 1fr;
+      gap: 9px;
+      align-items: start;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      transition: opacity .25s ease, transform .25s ease;
+    }
+    .msg.removing { opacity: .28; transform: translateX(-10px); text-decoration: line-through; }
+    .role {
+      color: #fff;
+      border-radius: 7px;
+      padding: 5px 6px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .system .role { background: var(--system); }
+    .user .role { background: var(--user); }
+    .assistant .role { background: var(--assistant); }
+    .content { color: #334155; font-size: 13px; line-height: 1.55; }
+    .explain { padding: 18px; display: grid; align-content: center; min-height: 360px; }
+    .big { font-size: 26px; font-weight: 900; margin-bottom: 12px; }
+    .desc { color: #334155; line-height: 1.8; font-size: 15px; }
+    .controls { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--line); background: #f8fafc; }
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button.primary { color: #fff; background: var(--ink); border-color: var(--ink); }
+    @media (max-width: 800px) {
+      .layout { grid-template-columns: 1fr; }
+      .msg { grid-template-columns: 72px 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>上下文窗口：把真正需要的消息放在桌面上</h1>
+    <p class="intro">点击“加入下一轮”，观察历史消息增加后，较早对话怎样被裁剪。演示窗口保留最近 3 轮，课程代码保留最近 5 轮。</p>
+    <div class="layout">
+      <div class="panel">
+        <div class="head"><span>发送给模型的 messages</span><span class="count" id="count"></span></div>
+        <div class="messages" id="messages"></div>
+        <div class="controls">
+          <button class="primary" id="next">加入下一轮</button>
+          <button id="reset">重播</button>
+        </div>
+      </div>
+      <div class="panel explain">
+        <div class="big" id="title">System Prompt 始终保留</div>
+        <div class="desc" id="desc">角色和规则通常放在上下文开头。历史对话会逐轮增加，但上下文空间有限，需要主动管理。</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const rounds = [
+      [
+        ["user", "我想去杭州玩两天。"],
+        ["assistant", "你更喜欢什么类型的行程？"]
+      ],
+      [
+        ["user", "轻松一点，喜欢自然风景。"],
+        ["assistant", "明白，我会减少赶路，优先安排西湖周边。"]
+      ],
+      [
+        ["user", "还想吃一些本地小吃。"],
+        ["assistant", "好的，可以加入河坊街或其他小吃体验。"]
+      ],
+      [
+        ["user", "第二天不要安排太早。"],
+        ["assistant", "收到，第二天会从较晚的上午活动开始。"]
+      ],
+      [
+        ["user", "如果下雨，准备一个室内备选。"],
+        ["assistant", "可以增加博物馆和茶馆作为备选。"]
+      ]
+    ];
+    let current = 0;
+    const keepRounds = 3;
+    const messages = document.getElementById("messages");
+    const count = document.getElementById("count");
+    const title = document.getElementById("title");
+    const desc = document.getElementById("desc");
+
+    function render() {
+      messages.innerHTML = "";
+      const system = createMessage("system", "你是 TravelPlanAgent，一个可靠的旅行规划助手。");
+      messages.appendChild(system);
+      const start = Math.max(0, current - keepRounds);
+      for (let index = start; index < current; index++) {
+        rounds[index].forEach(([role, content]) => messages.appendChild(createMessage(role, content)));
+      }
+      count.textContent = `当前保留 ${Math.min(current, keepRounds)} / ${keepRounds} 轮`;
+      if (current === 0) {
+        title.textContent = "System Prompt 始终保留";
+        desc.textContent = "角色和规则通常放在上下文开头。历史对话会逐轮增加，但上下文空间有限，需要主动管理。";
+      } else if (current <= keepRounds) {
+        title.textContent = "历史正在增加";
+        desc.textContent = "每一轮通常包含一条 user 消息和一条 assistant 消息。下一次调用时，程序会把这些消息重新发送给模型。";
+      } else {
+        title.textContent = "较早消息已被裁剪";
+        desc.textContent = "窗口只保留最近几轮。更早消息不再发送给模型，从而控制 Token 消耗和上下文长度。";
+      }
+    }
+    function createMessage(role, content) {
+      const item = document.createElement("div");
+      item.className = `msg ${role}`;
+      item.innerHTML = `<div class="role">${role}</div><div class="content">${content}</div>`;
+      return item;
+    }
+    document.getElementById("next").addEventListener("click", () => {
+      current = Math.min(current + 1, rounds.length);
+      render();
+    });
+    document.getElementById("reset").addEventListener("click", () => {
+      current = 0;
+      render();
+    });
+    render();
+  </script>
+</body>
+</html>

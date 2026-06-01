@@ -1,80 +1,164 @@
 import json
-import urllib.error
-import urllib.request
+from openai import OpenAI
 
-
-BASE_URL = "https://chat.ecnu.edu.cn/open/api/v1"
-API_KEY = ""
-MODEL_NAME = "ecnu-max"
-CHAT_COMPLETIONS_URL = f"{BASE_URL}/chat/completions"
-MAX_HISTORY_ROUNDS = 5
 
 SYSTEM_PROMPT = """
-你是 TravelPlanAgent，一个友好、可靠、适合初学者理解的旅行规划助手。
-你可以利用最近几轮对话中的目的地、日期、预算、同行人和偏好来继续回答。
-你的回答需要满足：
-1. 优先围绕旅行目的地、时间、预算、交通、天气、景点和注意事项展开。
-2. 语气清晰、亲切，不夸大，不编造无法确定的信息。
-3. 输出尽量包含三个部分：建议、理由、提醒。
+你是 TravelPlanAgent，一个专业、耐心、诚实的旅行规划助手。
+
+你必须只输出 JSON，不要在 JSON 前后添加解释、Markdown 代码块或多余文字。
+
+输出 JSON 必须包含这些字段：
+- destination: 字符串。如果用户没有提供目的地，填空字符串。
+- duration_days: 数字。如果用户没有提供旅行天数，填 0。
+- preferences: 字符串数组，提取用户明确表达的偏好。
+- missing_info: 字符串数组，列出继续规划前还缺少的关键信息。
+- can_plan_now: 布尔值。信息足够做初步规划时为 true，否则为 false。
+- reply: 字符串。给用户看的简短回复。
+
+不要编造实时天气、票价、营业时间、交通状态等可能变化的信息。
 """
 
+class LLMConfig:
+    """集中管理模型调用参数，对应课程中的 API 调用基础。"""
 
-def call_llm(messages, temperature=0.7):
-    if API_KEY == "YOUR_API_KEY":
-        return "请先把文件顶部的 API_KEY 替换成教师提供的真实密钥。"
-
-    payload = {
-        "model": MODEL_NAME,
-        "messages": messages,
-        "temperature": temperature,
-    }
-    request = urllib.request.Request(
-        CHAT_COMPLETIONS_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {API_KEY}",
-        },
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            result = json.loads(response.read().decode("utf-8"))
-            return result["choices"][0]["message"]["content"]
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", errors="ignore")
-        return f"API 请求失败，状态码：{error.code}\n{detail}"
-    except Exception as error:
-        return f"调用模型时出现错误：{error}"
+    base_url: str = "https://chat.ecnu.edu.cn/open/api/v1"
+    api_key: str = ""
+    model_name: str = "ecnu-max"
+    temperature: float = 0.2
+    timeout_seconds: int = 300
 
 
-def trim_history(conversation_history):
-    max_messages = MAX_HISTORY_ROUNDS * 2
-    return conversation_history[-max_messages:]
+class LLMClient:
+    """统一封装 LLM 请求，避免 Agent 主流程直接处理 HTTP 细节。"""
+
+    def __init__(self, config: LLMConfig | None = None, openai_client: object | None = None) -> None:
+        self.config = config or LLMConfig()
+        self.openai_client = openai_client
+
+    def chat(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
+        if self.config.api_key in ["", "YOUR_API_KEY"]:
+            return "请先把 LLMConfig 里的 api_key 替换成真实密钥。"
+
+        try:
+            openai_client = self._get_openai_client()
+            completion = openai_client.chat.completions.create(
+                model=self.config.model_name,
+                messages=messages,
+                temperature=self.config.temperature if temperature is None else temperature,
+            )
+            return completion.choices[0].message.content or ""
+        except ImportError:
+            return "当前环境缺少 openai 包，请先运行：pip install openai"
+        except Exception as error:
+            return f"调用模型时出现错误：{error}"
+
+    def _get_openai_client(self) -> object:
+        if self.openai_client is not None:
+            return self.openai_client
+
+        self.openai_client = OpenAI(
+            api_key=self.config.api_key,
+            base_url=self.config.base_url,
+            timeout=self.config.timeout_seconds,
+        )
+        return self.openai_client
 
 
-def main():
-    print("TravelPlanAgent v0.3：支持最近 5 轮上下文记忆")
+class TravelPlanAgent:
+    """
+    TravelPlanAgent v0.3：固定输出格式，要求模型返回 JSON。
+    保留基础解析和字段校验，帮助学生观察结构化输出是否可被程序读取。
+    """
+
+    required_fields = [
+        "destination",
+        "duration_days",
+        "preferences",
+        "missing_info",
+        "can_plan_now",
+        "reply",
+    ]
+
+    def __init__(self, llm_client: LLMClient | None = None, system_prompt: str = SYSTEM_PROMPT) -> None:
+        self.llm_client = llm_client or LLMClient()
+        self.system_prompt = system_prompt
+
+    def run(self, user_input: str) -> dict[str, object]:
+        messages = self.build_messages(user_input)
+        raw_answer = self.llm_client.chat(messages)
+        return self.parse_agent_output(raw_answer)
+
+    def build_messages(self, user_input: str) -> list[dict[str, str]]:
+        return [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": self.build_user_prompt(user_input)},
+        ]
+
+    def build_user_prompt(self, user_input: str) -> str:
+        return f"""
+        请把下面的用户输入整理为指定 JSON。
+        
+        用户输入：
+        {user_input}
+        
+        JSON 示例：
+        {{
+          "destination": "杭州",
+          "duration_days": 2,
+          "preferences": ["自然风景", "轻松"],
+          "missing_info": ["出行日期", "预算"],
+          "can_plan_now": false,
+          "reply": "我可以先帮你规划杭州两日游，但还需要知道出行日期和预算。"
+        }}
+        """
+
+    def parse_agent_output(self, raw_output: str) -> dict[str, object]:
+        try:
+            data = json.loads(raw_output)
+        except json.JSONDecodeError:
+            return {
+                "valid": False,
+                "error": "模型没有返回合法 JSON。",
+                "raw_output": raw_output,
+            }
+
+        missing_fields = [field for field in self.required_fields if field not in data]
+        if missing_fields:
+            return {
+                "valid": False,
+                "error": f"模型输出缺少字段：{', '.join(missing_fields)}",
+                "raw_output": raw_output,
+            }
+
+        return {"valid": True, "data": data}
+
+
+def main() -> None:
+    print("TravelPlanAgent v0.3：固定输出格式，要求模型返回 JSON")
     print("输入 exit、quit 或 退出 可以结束对话。")
 
-    conversation_history = []
+    agent = TravelPlanAgent()
 
     while True:
-        user_input = input("\n你：").strip()
+        try:
+            user_input = input("\n你：").strip()
+        except EOFError:
+            print("\nTravelPlanAgent：输入已结束，下次旅行再见！")
+            break
+
         if user_input.lower() in ["exit", "quit"] or user_input == "退出":
             print("TravelPlanAgent：下次旅行再见！")
             break
 
-        conversation_history.append({"role": "user", "content": user_input})
-        conversation_history = trim_history(conversation_history)
-
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history
-        answer = call_llm(messages)
-        print(f"TravelPlanAgent：{answer}")
-
-        conversation_history.append({"role": "assistant", "content": answer})
-        conversation_history = trim_history(conversation_history)
+        parsed = agent.run(user_input)
+        if parsed["valid"]:
+            data = parsed["data"]
+            print("TravelPlanAgent JSON：")
+            print(json.dumps(data, ensure_ascii=False, indent=2))
+            print(f"\nTravelPlanAgent：{data['reply']}")
+        else:
+            print(f"TravelPlanAgent：{parsed['error']}")
+            print(parsed["raw_output"])
 
 
 if __name__ == "__main__":

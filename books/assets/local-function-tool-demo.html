@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>本地函数 Tool 完整调用动画</title>
+  <style>
+    :root{--bg:#f8fafc;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#dbe3ee;--blue:#2563eb;--teal:#0f766e;--orange:#ea580c}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Arial,"Microsoft YaHei",sans-serif}
+    .wrap{max-width:1080px;margin:auto;padding:20px}h1{margin:0 0 6px;font-size:22px}.intro{margin:0 0 15px;color:var(--muted);font-size:14px;line-height:1.6}
+    .flow{display:grid;grid-template-columns:repeat(6,1fr);gap:9px}.node{min-height:126px;padding:11px;background:var(--panel);border:1px solid var(--line);border-radius:10px;opacity:.28;transform:translateY(12px);transition:.35s}
+    .node.active{opacity:1;transform:none;border-color:var(--blue);box-shadow:0 10px 20px rgba(37,99,235,.16)}.node.done{opacity:1;transform:none;background:#f0fdfa;border-color:#99f6e4}
+    .num{width:27px;height:27px;display:grid;place-items:center;border-radius:50%;background:var(--blue);color:#fff;font-weight:800;margin-bottom:8px}.name{font-weight:800;font-size:15px;margin-bottom:7px}.desc{color:#475569;font-size:12px;line-height:1.5}
+    .details{display:grid;grid-template-columns:.85fr 1.15fr;gap:12px;margin-top:13px}.panel{padding:14px;background:#fff;border:1px solid var(--line);border-radius:10px}.title{font-size:18px;font-weight:900;margin-bottom:8px}.text{font-size:14px;color:#334155;line-height:1.7}
+    pre{margin:0;min-height:145px;padding:12px;border-radius:8px;background:#0f172a;color:#dbeafe;white-space:pre-wrap;font-size:12px;line-height:1.5}.controls{display:flex;gap:8px;margin-top:11px}
+    button{padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}button.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+    @media(max-width:850px){.flow{grid-template-columns:1fr}.node{min-height:auto}.details{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>local_function：从用户问题到本地小贴士</h1>
+  <p class="intro">播放后会逐步点亮整条链路。这个 Tool 不联网，只读取代码内部维护的数据。</p>
+  <div class="flow">
+    <div class="node"><div class="num">1</div><div class="name">用户输入</div><div class="desc">我去杭州玩两天，有什么本地提醒？</div></div>
+    <div class="node"><div class="num">2</div><div class="name">提取参数</div><div class="desc">extract_city() 找到 city = 杭州</div></div>
+    <div class="node"><div class="num">3</div><div class="name">执行函数</div><div class="desc">get_local_travel_tips(city='杭州')</div></div>
+    <div class="node"><div class="num">4</div><div class="name">读取字典</div><div class="desc">从 LOCAL_TRAVEL_TIPS 取出杭州条目</div></div>
+    <div class="node"><div class="num">5</div><div class="name">Observation</div><div class="desc">西湖适合步行和骑行，灵隐寺适合上午</div></div>
+    <div class="node"><div class="num">6</div><div class="name">回填 Prompt</div><div class="desc">LLM 基于本地信息组织最终建议</div></div>
+  </div>
+  <div class="details">
+    <div class="panel"><div class="title" id="title"></div><div class="text" id="text"></div><div class="controls"><button class="primary" id="play">播放完整流程</button><button id="next">单步前进</button><button id="reset">重播</button></div></div>
+    <div class="panel"><pre id="code"></pre></div>
+  </div>
+</div>
+<script>
+const copy=[
+["等待开始","点击播放，观察一次本地函数调用怎样完整走通。","user_input = \"我去杭州玩两天，有什么本地提醒？\""],
+["读取用户输入","Agent 先拿到自然语言问题。","user_input = \"我去杭州玩两天，有什么本地提醒？\""],
+["提取城市参数","程序从输入中识别出杭州。","city = extract_city(user_input)\n# city = \"杭州\""],
+["调用本地函数","参数进入 local_function。","get_local_travel_tips(city=\"杭州\")"],
+["读取本地字典","程序无需联网，直接读取代码内部数据。","LOCAL_TRAVEL_TIPS[\"杭州\"]"],
+["形成 Observation","查到的小贴士成为 Tool Result。","tool_result = \"杭州西湖适合步行和骑行，灵隐寺适合安排在上午。\""],
+["回填 Prompt","工具结果被拼接到 Prompt，LLM 才能基于它回答。","prompt = user_input + tool_result\nanswer = llm.chat(prompt)"]
+];let step=0,timer=null;const nodes=[...document.querySelectorAll(".node")];
+function render(){nodes.forEach((n,i)=>{n.classList.toggle("done",i<step);n.classList.toggle("active",i===step-1)});document.getElementById("title").textContent=copy[step][0];document.getElementById("text").textContent=copy[step][1];document.getElementById("code").textContent=copy[step][2]}
+function advance(){if(step<nodes.length){step++;render()}else{clearInterval(timer);timer=null}}
+document.getElementById("play").onclick=()=>{clearInterval(timer);timer=setInterval(advance,700)};
+document.getElementById("next").onclick=advance;document.getElementById("reset").onclick=()=>{clearInterval(timer);timer=null;step=0;render()};render();
+</script>
+</body>
+</html>
