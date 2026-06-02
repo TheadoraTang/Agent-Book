@@ -84,7 +84,7 @@ Prompt 可以简单理解为“你交给模型的任务说明”。但在 Agent 
 ```sbs-iframe
 src: assets/prompt-structure-demo.html
 title: Prompt 结构组合演示
-height: 520px
+height: 550px
 ```
 
 上面这个演示想表达一个重点：模型最终看到的不是孤立的一句话，而是一份“上下文包”。这个上下文包越清楚，模型越容易做对事。

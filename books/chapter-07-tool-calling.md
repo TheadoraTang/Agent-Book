@@ -47,13 +47,7 @@
 | --- | --- | 
 | Tool 1 | 自己写的本地函数 
 | Tool 2 | 调用外部天气 API 
-| Tool 3 | 使用 web_search 功能 
-
-最后，我们会把三个工具合并进：
-
-```text
-Agent-Code/TravelPlanAgent_v0.5.py
-```
+| Tool 3 | 使用 web_search 功能
 
 ---
 
@@ -74,12 +68,9 @@ LLM 很擅长理解语言和组织回答，但它并不是万能信息源。
 它通常不知道：
 
 - 当前天气；
-- 实时票价；
-- 最新营业时间；
-- 你电脑里的本地文件；
-- 程序内部保存的数据；
-- 搜索引擎刚刚返回的结果；
-- 数据库中的订单状态。
+- 实时火车票价；
+- 某一些商店的最新营业时间；
+- 一些外部数据和信息源等等
 
 如果 Agent 需要处理这些信息，就要通过 Tool 连接外部世界。
 
@@ -121,7 +112,6 @@ Agent：根据天气结果，给出步行和穿衣建议。
 <!-- sbs-code -->
 
 ```python
-@dataclass
 class ToolResult:
     tool_name: str
     tool_function: str
@@ -243,7 +233,7 @@ Tool 不一定要联网。只要它能帮助 Agent 完成任务，就可以成�
 ```sbs-iframe
 src: assets/local-function-tool-demo.html
 title: 本地函数 Tool 完整调用动画
-height: 620px
+height: 500px
 ```
 
 ### 本地函数 Tool 示例
@@ -546,7 +536,7 @@ except Exception as error:
 ```sbs-iframe
 src: assets/weather-api-tool-demo.html
 title: 天气 API Tool 完整调用动画
-height: 620px
+height: 500px
 ```
 
 ### 天气 API Tool 完整代码
@@ -971,7 +961,7 @@ Agent 需要注意：
 ```sbs-iframe
 src: assets/web-search-tool-demo.html
 title: web_search Tool 完整调用动画
-height: 620px
+height: 500px
 ```
 
 ### web_search Tool 完整代码
@@ -1060,7 +1050,6 @@ class LLMClient:
         return self.openai_client
 
 
-@dataclass
 class ConversationMemory:
     """
     保存最近几轮对话。
@@ -1083,8 +1072,6 @@ class ConversationMemory:
     def trim(self) -> None:
         self.messages = self.messages[-self.max_rounds * 2 :]
 
-
-@dataclass
 class ToolResult:
     """
     工具调用结果的统一格式。
@@ -1114,7 +1101,6 @@ class WebSearchTool(BaseTool):
     """
     调用 searchfree.site 获取目的地攻略、景点和路线信息。
     """
-
     name = "web_search"
     function_name = "web_search_travel_guide"
     description = "通过搜索获取目的地攻略、景点和路线信息。"
@@ -1283,7 +1269,7 @@ if __name__ == "__main__":
 
 我们会把工具记录整理成 JSON：
 
-```json
+```text
 {
   "tool_name": "local_function",
   "tool_function": "get_local_travel_tips",
@@ -1315,7 +1301,7 @@ return (
 
 例如天气工具可以描述成：
 
-```json
+```text
 {
   "name": "weather_api",
   "description": "查询目的地当前天气，适合回答气温、降雨、穿衣和出行风险。",

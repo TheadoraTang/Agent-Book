@@ -117,7 +117,7 @@ User：请根据天气给出调整后的计划。
 ```sbs-iframe
 src: assets/context-window-demo.html
 title: 上下文窗口与历史消息裁剪演示
-height: 560px
+height: 650px
 ```
 
 你可以把上下文窗口想象成一张有限大小的办公桌。
@@ -150,7 +150,7 @@ Agent 开发里，上下文管理就是在做这类选择。
 
 如果程序只发送：
 
-```json
+```text
 [
   {
     "role": "user",
@@ -163,7 +163,7 @@ Agent 开发里，上下文管理就是在做这类选择。
 
 如果程序发送：
 
-```json
+```text
 [
   {
     "role": "system",
@@ -227,9 +227,7 @@ messages = [
 在 `TravelPlanAgent_v0.4.py` 中，我们把这个逻辑整理进了一个更清晰的 `ConversationMemory` 类：
 
 <!-- sbs-code -->
-
 ```python
-@dataclass
 class ConversationMemory:
     max_rounds: int = 5
     messages: list[dict[str, str]] = field(default_factory=list)

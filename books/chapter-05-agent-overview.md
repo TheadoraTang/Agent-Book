@@ -85,7 +85,7 @@ Agent 更像是：
 ```sbs-iframe
 src: assets/agent-components-demo.html
 title: Agent 的基本组成与工作过程
-height: 540px
+height: 570px
 ```
 
 ## Agent 通常由哪些部分组成

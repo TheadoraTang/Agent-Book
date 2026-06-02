@@ -95,7 +95,7 @@
 ```sbs-iframe
 src: assets/structured-output-demo.html
 title: 从自然语言到结构化输出
-height: 520px
+height: 650px
 ```
 
 ## 什么是 Structured Output
@@ -197,9 +197,8 @@ JSON 字段：
 这比简单说“输出 JSON”更好，因为它告诉了模型字段名和字段含义。
 
 如果再给一个示例，稳定性会更好：
+```json
 
-```text
-输出示例：
 {
   "destination": "杭州",
   "duration_days": 2,
@@ -295,13 +294,12 @@ ScheduleItem:
 
 例如：
 
-```markdown
 | 时间 | 地点 | 安排 | 备注 |
 | --- | --- | --- | --- |
 | 上午 | 西湖 | 沿湖散步 | 节奏轻松 |
 | 下午 | 灵隐寺 | 参观寺院 | 注意预约 |
 | 晚上 | 河坊街 | 吃小吃 | 避开太晚 |
-```
+
 
 表格的好处是阅读友好，适合教材、报告或聊天回复。
 
