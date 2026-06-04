@@ -1,50 +1,37 @@
-import json
+﻿import json
 import socket
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from pathlib import Path
-
-import numpy as np
 
 
 BASE_URL = "https://chat.ecnu.edu.cn/open/api/v1"
 API_KEY = ""
-MODEL_NAME = "ecnu-plus"
+MODEL_NAME = "ecnu-max"
 CHAT_COMPLETIONS_URL = f"{BASE_URL}/chat/completions"
 MAX_HISTORY_ROUNDS = 5
 LLM_TIMEOUT_SECONDS = 300
 SEARCH_API_URL = "https://searchfree.site/api/search"
 MAX_TOOL_ROUNDS = 3
 
-BASE_DIR = Path(__file__).resolve().parent
-BGE_M3_MODEL_PATH = BASE_DIR / "assets" / "bge-m3"
-
-_embedding_model = None
-_rag_chunks = None
-_rag_embeddings = None
-
 SYSTEM_PROMPT = """
-你是 TravelPlanAgent，一个具备工具调用和 RAG 能力的旅行规划助手。
-你需要根据用户问题自主决定调用哪些 Tools。
+你是 TravelPlanAgent，一个友好、可靠、适合初学者理解的旅行规划助手。
+你具备 Think-Act-Observe 能力：
+1. Think：先根据用户问题判断需要哪些 Tools。
+2. Act：通过 tool_calls 调用合适的工具。
+3. Observe：读取工具返回结果，再给出最终旅行建议。
 
-你可以使用四个 Tools：
+你可以使用三个 Tools：
 - get_local_travel_tips：读取代码内置的城市出行提醒。
 - get_weather_from_api：调用天气 API 获取实时天气。
-- web_search_travel_guide：调用搜索 API 获取网页攻略、景点、路线信息。
-- rag_search_travel_knowledge：使用本地 assets/bge-m3 embedding 模型检索课程内置旅游知识库。
-
-当用户询问目的地怎么玩、路线安排、景点建议、雨天安排、亲子/老人/预算等旅行规划问题时，
-你应优先调用 rag_search_travel_knowledge 获取本地知识库片段。
-如果问题还涉及天气，再额外调用 get_weather_from_api。
-如果问题需要最新网页攻略，再额外调用 web_search_travel_guide。
+- web_search_travel_guide：调用搜索 API 获取旅行攻略、景点、路线信息。
 
 最终回答必须说明：
 1. 本轮使用了哪些 Tools。
 2. 每个 Tool 做了什么事。
-3. RAG 检索到了哪些相关知识，以及这些知识如何影响你的建议。
-4. 如果 RAG 或外部工具结果不足，要明确提醒用户补充信息或出行前核验。
+3. 每个 Tool 返回了什么关键信息。
+然后再给出旅行建议和提醒。
 """
 
 LOCAL_TRAVEL_TIPS = {
@@ -85,26 +72,6 @@ WEATHER_CODE_MAP = {
     95: "雷暴",
 }
 
-TRAVEL_KNOWLEDGE = """
-# 上海城市旅行
-上海适合第一次到访的经典路线是人民广场、南京东路、外滩、陆家嘴。白天可以看城市建筑和博物馆，晚上适合去外滩或陆家嘴看夜景。喜欢城市文化的游客可以安排武康路、思南路、衡山路、上海博物馆和上海当代艺术博物馆。亲子旅行可以考虑上海科技馆、上海自然博物馆和迪士尼。上海市内公共交通发达，地铁比打车更稳定。
-
-# 北京历史文化旅行
-北京适合历史文化主题旅行。经典路线包括天安门、故宫、景山公园、北海公园、什刹海和南锣鼓巷。故宫、国家博物馆等热门景点通常需要提前预约。长城距离市区较远，建议单独安排一天。北京城市尺度大，跨区移动耗时较长，行程不宜过密。
-
-# 杭州西湖与茶文化
-杭州适合慢节奏旅行。西湖可以安排断桥、白堤、苏堤、雷峰塔、曲院风荷和湖滨步行区。灵隐寺适合上午前往。喜欢茶文化可以去龙井村、中国茶叶博物馆和满觉陇。雨天可以安排南宋德寿宫遗址博物馆、浙江省博物馆、河坊街和室内茶馆。
-
-# 成都慢旅行与美食
-成都适合慢旅行和美食体验。常见路线包括大熊猫繁育研究基地、人民公园、宽窄巷子、武侯祠、锦里和太古里。熊猫基地建议上午早点去。美食可以安排火锅、串串、担担面、钟水饺和蛋烘糕。成都行程要留出喝茶、散步和休息的时间。
-
-# 广州美食与城市文化
-广州适合美食和城市文化旅行。常见路线包括陈家祠、沙面、永庆坊、北京路、珠江夜游和广东省博物馆。早茶适合安排在上午。夏季广州闷热且可能阵雨，行程应准备室内备选。广州地铁便利，但老城区步行体验也很好。
-
-# 通用旅行规划原则
-旅行规划时，每天不要安排过多景点。城市初访建议每天 2 到 4 个主要点位，并留出交通、排队、用餐和休息时间。亲子、老人同行时要降低步行强度。雨天优先安排博物馆、展览、商场、茶馆和餐饮体验。预算有限时，应优先选择公共交通和集中区域游玩。
-"""
-
 TOOLS = [
     {
         "type": "function",
@@ -113,7 +80,9 @@ TOOLS = [
             "description": "读取代码内置的城市出行提醒，包括交通、预约、人流、节奏和避坑建议。",
             "parameters": {
                 "type": "object",
-                "properties": {"city": {"type": "string", "description": "城市名，例如：北京、上海、杭州。"}},
+                "properties": {
+                    "city": {"type": "string", "description": "城市名，例如：北京、上海、杭州。"}
+                },
                 "required": ["city"],
             },
         },
@@ -125,7 +94,9 @@ TOOLS = [
             "description": "调用天气 API 获取城市当前天气、气温、湿度、降水和风速。",
             "parameters": {
                 "type": "object",
-                "properties": {"city": {"type": "string", "description": "城市名，例如：北京、上海、杭州。"}},
+                "properties": {
+                    "city": {"type": "string", "description": "城市名，例如：北京、上海、杭州。"}
+                },
                 "required": ["city"],
             },
         },
@@ -138,24 +109,12 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query_text": {"type": "string", "description": "搜索关键词，例如：北京三日游、上海亲子旅行攻略。"}
+                    "query_text": {
+                        "type": "string",
+                        "description": "搜索关键词，例如：北京三日游、上海亲子旅行攻略。",
+                    }
                 },
                 "required": ["query_text"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "rag_search_travel_knowledge",
-            "description": "使用本地 assets/bge-m3 embedding 模型检索课程内置旅游知识库，返回最相关的知识片段。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "用于 RAG 检索的问题，例如：杭州雨天怎么玩。"},
-                    "top_k": {"type": "integer", "description": "返回的知识片段数量，默认 3。"},
-                },
-                "required": ["query"],
             },
         },
     },
@@ -166,7 +125,11 @@ def call_llm_response(messages, temperature=0.7, tools=None, tool_choice=None):
     if API_KEY in ["", "YOUR_API_KEY"]:
         return {"role": "assistant", "content": "请先把文件顶部的 API_KEY 替换成真实密钥。"}
 
-    payload = {"model": MODEL_NAME, "messages": messages, "temperature": temperature}
+    payload = {
+        "model": MODEL_NAME,
+        "messages": messages,
+        "temperature": temperature,
+    }
     if tools:
         payload["tools"] = tools
     if tool_choice:
@@ -175,7 +138,10 @@ def call_llm_response(messages, temperature=0.7, tools=None, tool_choice=None):
     request = urllib.request.Request(
         CHAT_COMPLETIONS_URL,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {API_KEY}"},
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {API_KEY}",
+        },
         method="POST",
     )
 
@@ -197,81 +163,9 @@ def call_llm_response(messages, temperature=0.7, tools=None, tool_choice=None):
             return {"role": "assistant", "content": f"调用模型时出现错误：{error}"}
 
 
-def load_embedding_model():
-    global _embedding_model
-    if _embedding_model is not None:
-        return _embedding_model
-    if not BGE_M3_MODEL_PATH.exists():
-        raise FileNotFoundError(f"没有找到本地模型目录：{BGE_M3_MODEL_PATH}")
-    try:
-        from sentence_transformers import SentenceTransformer
-    except ImportError as error:
-        raise ImportError(
-            "当前环境缺少 sentence_transformers，无法加载 assets/bge-m3 生成 embedding。"
-            "请先安装：pip install sentence-transformers torch"
-        ) from error
-
-    print(f"[RAG] 正在加载本地 embedding 模型：{BGE_M3_MODEL_PATH}")
-    _embedding_model = SentenceTransformer(str(BGE_M3_MODEL_PATH))
-    return _embedding_model
-
-
-def embed_texts(texts):
-    model = load_embedding_model()
-    embeddings = model.encode(
-        texts,
-        batch_size=8,
-        normalize_embeddings=True,
-        show_progress_bar=False,
-    )
-    return np.asarray(embeddings, dtype=np.float32)
-
-
-def split_knowledge_into_chunks(text):
-    chunks = []
-    for block in text.strip().split("\n\n"):
-        chunk = block.strip()
-        if chunk:
-            chunks.append(chunk)
-    return chunks
-
-
-def build_rag_index():
-    global _rag_chunks, _rag_embeddings
-    if _rag_chunks is not None and _rag_embeddings is not None:
-        return _rag_chunks, _rag_embeddings
-    _rag_chunks = split_knowledge_into_chunks(TRAVEL_KNOWLEDGE)
-    print(f"[RAG] 正在为 {len(_rag_chunks)} 个知识片段生成 embedding...")
-    _rag_embeddings = embed_texts(_rag_chunks)
-    return _rag_chunks, _rag_embeddings
-
-
-def rag_search_travel_knowledge(query, top_k=3):
-    try:
-        top_k = int(top_k)
-    except (TypeError, ValueError):
-        top_k = 3
-    top_k = max(1, min(top_k, 5))
-
-    try:
-        chunks, chunk_embeddings = build_rag_index()
-        query_embedding = embed_texts([query])[0]
-    except Exception as error:
-        return f"RAG 检索失败：{error}"
-
-    scores = chunk_embeddings @ query_embedding
-    ranked_indices = np.argsort(scores)[::-1][:top_k]
-
-    lines = [
-        "RAG 检索工具：rag_search_travel_knowledge",
-        f"Embedding 模型：{BGE_M3_MODEL_PATH}",
-        f"检索问题：{query}",
-        "最相关知识片段：",
-    ]
-    for rank, index in enumerate(ranked_indices, start=1):
-        lines.append(f"{rank}. 相似度：{float(scores[index]):.4f}")
-        lines.append(chunks[index])
-    return "\n".join(lines)
+def call_llm(messages, temperature=0.7):
+    message = call_llm_response(messages, temperature=temperature)
+    return message.get("content", "")
 
 
 def get_local_travel_tips(city):
@@ -318,7 +212,10 @@ def web_search_travel_guide(query_text):
     request = urllib.request.Request(
         SEARCH_API_URL,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "User-Agent": "TravelPlanAgent/0.6"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "TravelPlanAgent/0.5",
+        },
         method="POST",
     )
 
@@ -371,11 +268,6 @@ def execute_tool_call(tool_call):
         query_text = arguments.get("query_text", "")
         print(f"[Act] web_search_travel_guide(query_text='{query_text}')")
         tool_result = web_search_travel_guide(query_text)
-    elif function_name == "rag_search_travel_knowledge":
-        query = arguments.get("query", "")
-        top_k = arguments.get("top_k", 3)
-        print(f"[Act] rag_search_travel_knowledge(query='{query}', top_k={top_k})")
-        tool_result = rag_search_travel_knowledge(query, top_k)
     else:
         tool_result = f"未知工具：{function_name}"
 
@@ -392,49 +284,51 @@ def run_agent(user_input, conversation_history):
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history
     messages.append({"role": "user", "content": user_input})
 
-    print("[Think] 向模型注册 Tools，让模型决定是否调用 RAG、天气、搜索或本地函数...")
-    used_tools = []
+    print("[Think] 向模型注册三个 Tools，让模型决定调用哪些工具...")
     for round_index in range(1, MAX_TOOL_ROUNDS + 1):
-        response = call_llm_response(messages, temperature=0.2, tools=TOOLS, tool_choice="auto")
+        response = call_llm_response(
+            messages,
+            temperature=0.2,
+            tools=TOOLS,
+            tool_choice="auto",
+        )
+
         tool_calls = response.get("tool_calls", [])
         if not tool_calls:
             print("[Think] 模型没有继续调用工具。")
-            if used_tools:
-                break
             return response.get("content", "模型没有返回可用回复。")
 
         print(f"[Think 结果] 第 {round_index} 轮请求调用 {len(tool_calls)} 个 Tool。")
         messages.append(response)
+
         for tool_call in tool_calls:
-            function_name = tool_call.get("function", {}).get("name", "")
-            used_tools.append(function_name)
             tool_result = execute_tool_call(tool_call)
             messages.append(
                 {
                     "role": "tool",
                     "tool_call_id": tool_call.get("id", ""),
-                    "name": function_name,
+                    "name": tool_call.get("function", {}).get("name", ""),
                     "content": tool_result,
                 }
             )
 
-    print("[Final] 将工具 Observe 结果交回模型，生成最终回答...")
+    print("[Final] 工具轮次已结束，要求模型基于 Observe 结果生成自然语言总结...")
     messages.append(
         {
             "role": "user",
             "content": (
-                "请停止调用工具，只根据上面的工具观察结果生成自然语言回答。"
-                "必须说明本轮使用了哪些工具，并重点说明 RAG 检索到的知识如何影响你的旅行建议。"
+                "请停止调用工具。请只用自然语言回答用户，必须总结已经观察到的工具结果，"
+                "并说明使用了哪些 Tools、每个 Tool 做了什么、对旅行建议有什么影响。"
             ),
         }
     )
-    final_response = call_llm_response(messages, temperature=0.7)
+    final_response = call_llm_response(messages, temperature=0.7, tools=None, tool_choice=None)
     return final_response.get("content", "模型没有返回可用回复。")
 
 
 def main():
-    print("TravelPlanAgent v0.6：在 v0.5 基础上增加基于 bge-m3 embedding 的 RAG")
-    print("可用 Tools：local_function、weather_api、web_search、rag_search_travel_knowledge。")
+    print("TravelPlanAgent v0.6：Think-Act-Observe，集成三个 Tools")
+    print("可用 Tools：local_function、weather_api、web_search。")
     print("输入 exit、quit 或 退出 可以结束对话。")
 
     conversation_history = []
