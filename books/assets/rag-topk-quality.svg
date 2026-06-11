@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="780" viewBox="0 0 1300 780" role="img" aria-labelledby="title desc">
+  <title id="title">RAG Top-K 质量取舍</title>
+  <desc id="desc">展示 Top-K 太小、合适和太大时对检索质量的影响。</desc>
+  <style>
+    .bg{fill:#f6f8fb}.title{font:700 36px Arial,"Microsoft YaHei",sans-serif;fill:#1d2636}
+    .sub{font:22px Arial,"Microsoft YaHei",sans-serif;fill:#657084}
+    .h{font:700 24px Arial,"Microsoft YaHei",sans-serif}.body{font:20px Arial,"Microsoft YaHei",sans-serif;fill:#1d2636}
+    .score{font:16px Arial,"Microsoft YaHei",sans-serif;fill:#657084}
+  </style>
+  <rect class="bg" width="1300" height="780"/>
+  <text class="title" x="54" y="70">RAG 检索质量：召回、噪声与 Top-K</text>
+  <text class="sub" x="56" y="112">检索不是“越多越好”。Top-K 太小会漏信息，太大会把噪声塞进上下文。</text>
+
+  <g transform="translate(70,170)">
+    <rect width="350" height="440" rx="10" fill="#fff6e5" stroke="#b36a00" stroke-width="3"/>
+    <text class="h" x="28" y="55" fill="#b36a00">Top-K 太小</text>
+    <circle cx="42" cy="118" r="7" fill="#b36a00"/><text class="body" x="65" y="125">只返回 1 条</text>
+    <circle cx="42" cy="188" r="7" fill="#b36a00"/><text class="body" x="65" y="195">可能漏掉关键约束</text>
+    <circle cx="42" cy="258" r="7" fill="#b36a00"/><text class="body" x="65" y="265">回答信息不完整</text>
+    <text class="score" x="65" y="330">相似度候选</text>
+    <rect x="65" y="350" width="220" height="14" fill="#e2e7ef"/><rect x="65" y="350" width="194" height="14" fill="#b36a00"/>
+    <rect x="65" y="385" width="220" height="14" fill="#e2e7ef"/>
+    <rect x="65" y="420" width="220" height="14" fill="#e2e7ef"/>
+  </g>
+
+  <g transform="translate(470,170)">
+    <rect width="350" height="440" rx="10" fill="#f0fbf6" stroke="#16885f" stroke-width="3"/>
+    <text class="h" x="28" y="55" fill="#16885f">合适 Top-K</text>
+    <circle cx="42" cy="118" r="7" fill="#16885f"/><text class="body" x="65" y="125">返回最相关 2 条</text>
+    <circle cx="42" cy="188" r="7" fill="#16885f"/><text class="body" x="65" y="195">上下文短而准</text>
+    <circle cx="42" cy="258" r="7" fill="#16885f"/><text class="body" x="65" y="265">适合教学版 v0.7/v0.8</text>
+    <text class="score" x="65" y="330">相似度候选</text>
+    <rect x="65" y="350" width="220" height="14" fill="#e2e7ef"/><rect x="65" y="350" width="194" height="14" fill="#16885f"/>
+    <rect x="65" y="385" width="220" height="14" fill="#e2e7ef"/><rect x="65" y="385" width="163" height="14" fill="#16885f"/>
+    <rect x="65" y="420" width="220" height="14" fill="#e2e7ef"/><rect x="65" y="420" width="70" height="14" fill="#a8cfc0"/>
+  </g>
+
+  <g transform="translate(870,170)">
+    <rect width="350" height="440" rx="10" fill="#f4f0ff" stroke="#7a4ed8" stroke-width="3"/>
+    <text class="h" x="28" y="55" fill="#7a4ed8">Top-K 太大</text>
+    <circle cx="42" cy="118" r="7" fill="#7a4ed8"/><text class="body" x="65" y="125">返回过多片段</text>
+    <circle cx="42" cy="188" r="7" fill="#7a4ed8"/><text class="body" x="65" y="195">噪声淹没重点</text>
+    <circle cx="42" cy="258" r="7" fill="#7a4ed8"/><text class="body" x="65" y="265">Prompt 变长且不稳定</text>
+    <text class="score" x="65" y="330">相似度候选</text>
+    <rect x="65" y="350" width="220" height="14" fill="#e2e7ef"/><rect x="65" y="350" width="194" height="14" fill="#7a4ed8"/>
+    <rect x="65" y="385" width="220" height="14" fill="#e2e7ef"/><rect x="65" y="385" width="163" height="14" fill="#7a4ed8"/>
+    <rect x="65" y="420" width="220" height="14" fill="#e2e7ef"/><rect x="65" y="420" width="112" height="14" fill="#7a4ed8"/>
+  </g>
+</svg>

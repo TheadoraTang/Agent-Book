@@ -1,10 +1,21 @@
 import json
+import logging
 import socket
+import sys
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from openai import OpenAI
+
+
+logger = logging.getLogger("travel_agent")
+logger.setLevel(logging.INFO)
+logger.handlers.clear()
+handler = logging.StreamHandler(sys.stderr)
+handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+logger.addHandler(handler)
+logger.propagate = False
 
 
 SEARCH_API_URL = "https://searchfree.site/api/search"
@@ -28,8 +39,8 @@ class LLMConfig:
     """集中管理模型调用参数，对应课程中的 API 调用基础。"""
 
     base_url: str = "https://chat.ecnu.edu.cn/open/api/v1"
-    api_key: str = ""
-    model_name: str = "ecnu-plus"
+    api_key: str = "sk-4b905783f8ab4fed9f7c1879aaf2ae58"
+    model_name: str = "ecnu-max"
     temperature: float = 0.7
     timeout_seconds: int = 300
 
@@ -58,7 +69,7 @@ class LLMClient:
                 return completion.choices[0].message.content or ""
             except (socket.timeout, TimeoutError) as error:
                 if attempt == 0:
-                    print("[模型调用超时] 等待 2 秒后重试一次...")
+                    logger.warning("Error: 模型调用超时，等待 2 秒后重试一次...")
                     time.sleep(2)
                     continue
                 return f"调用模型超时：{error}。可以稍后重试，或减少搜索结果数量。"
@@ -214,9 +225,9 @@ class TravelPlanAgent:
         result = self.tool.run(query_text)
         tool_record = self.build_tool_record(result)
 
-        print(f"[工具调用] {result.tool_function}(query_text='{result.tool_input}')")
-        print(f"[工具作用] {result.tool_action}")
-        print(f"[工具结果] {result.content}")
+        logger.info("Tool Call: %s(query_text='%s')", result.tool_function, result.tool_input)
+        logger.info("Tool Action: %s", result.tool_action)
+        logger.info("Observe: %s", result.content)
 
         return (
             f"{user_input}\n\n"

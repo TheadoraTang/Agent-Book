@@ -1,8 +1,20 @@
+from __future__ import annotations
+
 import json
+import logging
+import sys
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from openai import OpenAI
+
+
+logger = logging.getLogger("travel_agent")
+logger.setLevel(logging.INFO)
+logger.handlers.clear()
+handler = logging.StreamHandler(sys.stderr)
+handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+logger.addHandler(handler)
+logger.propagate = False
 
 
 SYSTEM_PROMPT = """
@@ -46,14 +58,15 @@ WEATHER_CODE_MAP = {
     95: "雷暴",
 }
 
+@dataclass
 class LLMConfig:
     """
     集中管理模型调用参数
     """
 
     base_url: str = "https://chat.ecnu.edu.cn/open/api/v1"
-    api_key: str = ""
-    model_name: str = "ecnu-plus"
+    api_key: str = "sk-4b905783f8ab4fed9f7c1879aaf2ae58"
+    model_name: str = "ecnu-max"
     temperature: float = 0.7
     timeout_seconds: int = 300
 
@@ -88,6 +101,8 @@ class LLMClient:
         if self.openai_client is not None:
             return self.openai_client
 
+        from openai import OpenAI
+
         self.openai_client = OpenAI(
             api_key=self.config.api_key,
             base_url=self.config.base_url,
@@ -95,6 +110,7 @@ class LLMClient:
         )
         return self.openai_client
 
+@dataclass
 class ConversationMemory:
     """
     保存最近几轮对话。
@@ -117,6 +133,7 @@ class ConversationMemory:
     def trim(self) -> None:
         self.messages = self.messages[-self.max_rounds * 2 :]
 
+@dataclass
 class ToolResult:
     """
     工具调用结果的统一格式。
@@ -218,9 +235,9 @@ class TravelPlanAgent:
         result = self.tool.run(city)
         tool_record = self.build_tool_record(result)
 
-        print(f"[工具调用] {result.tool_function}(city='{result.tool_input}')")
-        print(f"[工具作用] {result.tool_action}")
-        print(f"[工具结果] {result.content}")
+        logger.info("Tool Call: %s(city='%s')", result.tool_function, result.tool_input)
+        logger.info("Tool Action: %s", result.tool_action)
+        logger.info("Observe: %s", result.content)
 
         return (
             f"{user_input}\n\n"

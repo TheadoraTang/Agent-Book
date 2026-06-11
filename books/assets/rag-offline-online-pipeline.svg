@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="780" viewBox="0 0 1300 780" role="img" aria-labelledby="title desc">
+  <title id="title">RAG 的两条流水线</title>
+  <desc id="desc">展示 RAG 的离线索引流水线和在线查询流水线。</desc>
+  <defs>
+    <marker id="arrow-blue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#2864d8"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#16885f"/>
+    </marker>
+    <marker id="arrow-muted" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#657084"/>
+    </marker>
+    <style>
+      .bg{fill:#f6f8fb}.title{font:700 36px Arial,"Microsoft YaHei",sans-serif;fill:#1d2636}
+      .sub{font:22px Arial,"Microsoft YaHei",sans-serif;fill:#657084}
+      .lane{font:700 24px Arial,"Microsoft YaHei",sans-serif}
+      .body{font:20px Arial,"Microsoft YaHei",sans-serif;fill:#1d2636}
+      .small{font:17px Arial,"Microsoft YaHei",sans-serif;fill:#657084}
+    </style>
+  </defs>
+  <rect class="bg" width="1300" height="780"/>
+  <text class="title" x="54" y="70">RAG 的两条流水线：离线索引 + 在线查询</text>
+  <text class="sub" x="56" y="112">离线阶段把资料变成可检索的向量；在线阶段按问题召回相关片段并生成回答。</text>
+
+  <text class="lane" x="70" y="132" fill="#2864d8">离线索引流水线</text>
+  <rect x="90" y="170" width="180" height="120" rx="10" fill="#ffffff" stroke="#2864d8" stroke-width="3"/>
+  <text class="body" x="130" y="218">原始文档</text>
+  <text class="small" x="115" y="252">Markdown / PDF</text>
+
+  <rect x="330" y="170" width="180" height="120" rx="10" fill="#ffffff" stroke="#2864d8" stroke-width="3"/>
+  <text class="body" x="382" y="218">清洗切分</text>
+  <text class="small" x="355" y="252">Chunk + Overlap</text>
+
+  <rect x="570" y="170" width="180" height="120" rx="10" fill="#ffffff" stroke="#2864d8" stroke-width="3"/>
+  <text class="body" x="612" y="218">Embedding</text>
+  <text class="small" x="615" y="252">文档向量</text>
+
+  <rect x="810" y="170" width="180" height="120" rx="10" fill="#ffffff" stroke="#2864d8" stroke-width="3"/>
+  <text class="body" x="858" y="218">向量索引</text>
+  <text class="small" x="850" y="252">Vector Store</text>
+
+  <line x1="270" y1="230" x2="330" y2="230" stroke="#2864d8" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <line x1="510" y1="230" x2="570" y2="230" stroke="#2864d8" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <line x1="750" y1="230" x2="810" y2="230" stroke="#2864d8" stroke-width="4" marker-end="url(#arrow-blue)"/>
+
+  <text class="lane" x="70" y="402" fill="#16885f">在线查询流水线</text>
+  <rect x="90" y="440" width="180" height="120" rx="10" fill="#ffffff" stroke="#16885f" stroke-width="3"/>
+  <text class="body" x="128" y="510">用户问题</text>
+
+  <rect x="330" y="440" width="180" height="120" rx="10" fill="#ffffff" stroke="#16885f" stroke-width="3"/>
+  <text class="body" x="390" y="490">Query</text>
+  <text class="body" x="365" y="522">Embedding</text>
+
+  <rect x="570" y="440" width="180" height="120" rx="10" fill="#ffffff" stroke="#16885f" stroke-width="3"/>
+  <text class="body" x="610" y="490">相似度检索</text>
+  <text class="small" x="642" y="522">Top-K</text>
+
+  <rect x="810" y="440" width="180" height="120" rx="10" fill="#ffffff" stroke="#16885f" stroke-width="3"/>
+  <text class="body" x="858" y="490">Prompt 拼接</text>
+  <text class="small" x="840" y="522">问题 + 知识片段</text>
+
+  <rect x="1050" y="440" width="180" height="120" rx="10" fill="#ffffff" stroke="#16885f" stroke-width="3"/>
+  <text class="body" x="1095" y="490">LLM 生成</text>
+  <text class="small" x="1095" y="522">最终回答</text>
+
+  <line x1="270" y1="500" x2="330" y2="500" stroke="#16885f" stroke-width="4" marker-end="url(#arrow-green)"/>
+  <line x1="510" y1="500" x2="570" y2="500" stroke="#16885f" stroke-width="4" marker-end="url(#arrow-green)"/>
+  <line x1="750" y1="500" x2="810" y2="500" stroke="#16885f" stroke-width="4" marker-end="url(#arrow-green)"/>
+  <line x1="990" y1="500" x2="1050" y2="500" stroke="#16885f" stroke-width="4" marker-end="url(#arrow-green)"/>
+
+  <path d="M900 290 C880 350 760 380 675 440" fill="none" stroke="#657084" stroke-width="4" marker-end="url(#arrow-muted)"/>
+  <text class="small" x="710" y="368">检索时读取索引</text>
+</svg>

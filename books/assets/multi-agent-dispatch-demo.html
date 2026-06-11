@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MainAgent 调度 SubAgent 演示</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --ink: #1d2636;
+      --muted: #657084;
+      --line: #d9e0ea;
+      --blue: #2864d8;
+      --green: #16885f;
+      --purple: #7a4ed8;
+      --amber: #b36a00;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+
+    .demo {
+      min-height: 100vh;
+      padding: 22px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+      gap: 16px;
+    }
+
+    .canvas,
+    .side {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(29, 38, 54, 0.06);
+    }
+
+    .canvas {
+      padding: 20px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    .hint {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    button {
+      border: 1px solid var(--blue);
+      background: var(--blue);
+      color: #fff;
+      border-radius: 6px;
+      padding: 9px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .main-agent {
+      border: 2px solid var(--blue);
+      border-radius: 8px;
+      padding: 16px;
+      background: #eef4ff;
+      text-align: center;
+    }
+
+    .main-agent strong {
+      display: block;
+      font-size: 20px;
+      margin-bottom: 6px;
+    }
+
+    .main-agent span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .agents {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(140px, 1fr));
+      gap: 12px;
+    }
+
+    .agent {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfcfe;
+      min-height: 130px;
+      transition: 0.2s ease;
+    }
+
+    .agent.active {
+      border-color: var(--purple);
+      background: #f4f0ff;
+      box-shadow: 0 0 0 3px rgba(122, 78, 216, 0.12);
+      transform: translateY(-2px);
+    }
+
+    .agent.done {
+      border-color: rgba(22, 136, 95, 0.55);
+      background: #f0fbf6;
+    }
+
+    .agent h2 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+
+    .agent p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+    }
+
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      background: #fff;
+    }
+
+    .step.active {
+      color: #fff;
+      border-color: var(--blue);
+      background: var(--blue);
+    }
+
+    .step.done {
+      color: var(--green);
+      border-color: rgba(22, 136, 95, 0.4);
+      background: #f0fbf6;
+    }
+
+    .side {
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .box {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfcfe;
+    }
+
+    .box h2 {
+      margin: 0 0 10px;
+      font-size: 16px;
+    }
+
+    .box p,
+    .box li {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .box ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .log {
+      min-height: 170px;
+      margin: 0;
+      padding: 14px;
+      overflow: auto;
+      border-radius: 8px;
+      background: #101723;
+      color: #e9f1ff;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 900px) {
+      .demo {
+        grid-template-columns: 1fr;
+      }
+
+      .agents,
+      .timeline {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="demo">
+    <section class="canvas">
+      <div class="header">
+        <div>
+          <h1>v0.8：MainAgent 如何调度多个 SubAgent</h1>
+          <p class="hint">一次完整旅行规划通常需要天气、知识检索和行程组织共同完成。</p>
+        </div>
+        <button id="nextBtn">下一步</button>
+      </div>
+
+      <div class="main-agent">
+        <strong>MainAgent</strong>
+        <span id="mainStatus">接收用户需求，准备拆解任务。</span>
+      </div>
+
+      <div class="agents" id="agents"></div>
+
+      <div class="timeline" id="timeline"></div>
+    </section>
+
+    <aside class="side">
+      <div class="box">
+        <h2>用户需求</h2>
+        <p>“成都三天怎么玩？想看熊猫、吃美食，不要太赶。”</p>
+      </div>
+      <div class="box">
+        <h2>Observation 汇总</h2>
+        <ul id="observations"></ul>
+      </div>
+      <pre class="log" id="log"></pre>
+    </aside>
+  </main>
+
+  <script>
+    const agents = [
+      { name: "WeatherAgent", desc: "查询目的地天气，为每日安排提供限制条件。" },
+      { name: "RAGAgent", desc: "检索旅游知识库，只返回最相关的前两条内容。" },
+      { name: "PlannerAgent", desc: "根据天气、知识和偏好生成三天行程。" }
+    ];
+
+    const steps = [
+      {
+        title: "接收需求",
+        main: "识别目的地、天数、偏好和限制。",
+        activeAgent: -1,
+        observations: [],
+        log: "[INFO] MainAgent: 收到用户需求\n[INFO] Think: 需要拆解为多个子任务"
+      },
+      {
+        title: "任务拆解",
+        main: "把复杂请求拆成天气查询、知识检索、行程规划。",
+        activeAgent: -1,
+        observations: [],
+        log: "[INFO] MainAgent: 子任务 = WeatherAgent + RAGAgent + PlannerAgent"
+      },
+      {
+        title: "天气查询",
+        main: "调度 WeatherAgent 执行实时信息查询。",
+        activeAgent: 0,
+        observations: ["成都天气：多云，适合户外，但午后注意休息。"],
+        log: "[INFO] SubAgent: WeatherAgent 执行\n[INFO] Observe: 天气结果写入 observations"
+      },
+      {
+        title: "知识检索",
+        main: "调度 RAGAgent 检索目的地相关知识。",
+        activeAgent: 1,
+        observations: [
+          "成都天气：多云，适合户外，但午后注意休息。",
+          "RAG Top 2：熊猫基地建议上午去；锦里和宽窄巷子适合夜间或傍晚。"
+        ],
+        log: "[INFO] SubAgent: RAGAgent 执行\n[INFO] RAG: 返回最相关知识片段 Top 2"
+      },
+      {
+        title: "生成方案",
+        main: "调度 PlannerAgent，把 observation 合成为最终旅行计划。",
+        activeAgent: 2,
+        observations: [
+          "成都天气：多云，适合户外，但午后注意休息。",
+          "RAG Top 2：熊猫基地建议上午去；锦里和宽窄巷子适合夜间或傍晚。",
+          "PlannerAgent：三天行程按上午重点游览、下午轻松休息、晚上美食街区组织。"
+        ],
+        log: "[INFO] SubAgent: PlannerAgent 执行\nstdout: 输出结构化旅行计划"
+      }
+    ];
+
+    const agentsBox = document.getElementById("agents");
+    const timeline = document.getElementById("timeline");
+    const observations = document.getElementById("observations");
+    const mainStatus = document.getElementById("mainStatus");
+    const log = document.getElementById("log");
+    let current = 0;
+
+    function renderAgents() {
+      agentsBox.innerHTML = agents.map((agent, index) => {
+        const active = index === steps[current].activeAgent;
+        const done = steps.slice(0, current + 1).some(step => step.activeAgent === index) && !active;
+        return `
+          <article class="agent ${active ? "active" : ""} ${done ? "done" : ""}">
+            <h2>${agent.name}</h2>
+            <p>${agent.desc}</p>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderTimeline() {
+      timeline.innerHTML = steps.map((step, index) => `
+        <div class="step ${index === current ? "active" : ""} ${index < current ? "done" : ""}">
+          ${index + 1}. ${step.title}
+        </div>
+      `).join("");
+    }
+
+    function renderSide() {
+      const step = steps[current];
+      mainStatus.textContent = step.main;
+      observations.innerHTML = step.observations.length
+        ? step.observations.map(item => `<li>${item}</li>`).join("")
+        : "<li>等待子 Agent 返回结果。</li>";
+      log.textContent = step.log;
+    }
+
+    function render() {
+      renderAgents();
+      renderTimeline();
+      renderSide();
+    }
+
+    document.getElementById("nextBtn").addEventListener("click", () => {
+      current = (current + 1) % steps.length;
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

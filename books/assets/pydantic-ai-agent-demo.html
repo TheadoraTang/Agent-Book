@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pydantic AI Multi-Agent 调用流程</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #cbd5e1;
+      --cyan: #0891b2;
+      --green: #16a34a;
+      --orange: #ea580c;
+      --red: #dc2626;
+      --panel: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+
+    .wrap {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .toolbar h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    button:hover { border-color: var(--cyan); }
+
+    .stage {
+      position: relative;
+      height: 560px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(90deg, rgba(148, 163, 184, .14) 1px, transparent 1px),
+        linear-gradient(rgba(148, 163, 184, .12) 1px, transparent 1px),
+        #fff;
+      background-size: 28px 28px;
+      overflow: hidden;
+    }
+
+    .node {
+      position: absolute;
+      min-height: 70px;
+      padding: 11px;
+      border: 1.5px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      transition: transform .28s ease, border-color .28s ease, box-shadow .28s ease, background .28s ease, opacity .28s ease;
+    }
+
+    .node strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .node span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .user { left: 28px; top: 50px; width: 160px; }
+    .think { left: 250px; top: 42px; width: 210px; border-color: #67e8f9; background: #ecfeff; }
+    .model { right: 42px; top: 50px; width: 180px; border-color: #fdba74; background: #fff7ed; }
+    .local { left: 72px; top: 236px; width: 148px; border-color: #86efac; background: #f0fdf4; }
+    .weather { left: 242px; top: 236px; width: 148px; border-color: #86efac; background: #f0fdf4; }
+    .rag { left: 412px; top: 236px; width: 148px; border-color: #86efac; background: #f0fdf4; }
+    .web { left: 582px; top: 236px; width: 148px; border-color: #86efac; background: #f0fdf4; }
+    .itinerary { left: 752px; top: 236px; width: 160px; border-color: #86efac; background: #f0fdf4; }
+    .deps { left: 90px; top: 398px; width: 210px; border-color: #94a3b8; background: #f8fafc; }
+    .observe { left: 390px; top: 398px; width: 210px; border-color: #fdba74; background: #fff7ed; }
+    .final { left: 700px; top: 398px; width: 230px; border-color: #fca5a5; background: #fef2f2; }
+
+    .node.dim { opacity: .34; }
+    .node.active {
+      transform: translateY(-5px) scale(1.04);
+      box-shadow: 0 18px 38px rgba(15, 23, 42, .18);
+      border-width: 2.5px;
+      opacity: 1;
+      z-index: 2;
+    }
+
+    .edge {
+      position: absolute;
+      height: 3px;
+      background: #94a3b8;
+      transform-origin: left center;
+      opacity: .25;
+      transition: opacity .25s ease, background .25s ease, height .25s ease;
+    }
+
+    .edge::after {
+      content: "";
+      position: absolute;
+      right: -6px;
+      top: -4px;
+      width: 0;
+      height: 0;
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+      border-left: 8px solid currentColor;
+      color: inherit;
+    }
+
+    .edge.active {
+      opacity: 1;
+      height: 4px;
+      background: var(--cyan);
+      color: var(--cyan);
+    }
+
+    .e1 { left: 188px; top: 91px; width: 62px; }
+    .e2 { left: 460px; top: 92px; width: 310px; }
+    .e3 { left: 340px; top: 120px; width: 135px; transform: rotate(112deg); }
+    .e4 { left: 390px; top: 120px; width: 110px; transform: rotate(78deg); }
+    .e5 { left: 442px; top: 120px; width: 112px; transform: rotate(58deg); }
+    .e6 { left: 494px; top: 120px; width: 135px; transform: rotate(44deg); }
+    .e7 { left: 548px; top: 120px; width: 165px; transform: rotate(36deg); }
+    .e8 { left: 300px; top: 432px; width: 90px; }
+    .e9 { left: 600px; top: 432px; width: 100px; }
+    .e10 { left: 600px; top: 398px; width: 205px; transform: rotate(-29deg); background: #f59e0b; }
+
+    .caption {
+      position: absolute;
+      left: 24px;
+      right: 24px;
+      bottom: 18px;
+      min-height: 78px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .94);
+      padding: 14px 16px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .caption strong { font-size: 15px; }
+    .caption p {
+      margin: 0;
+      color: #334155;
+      line-height: 1.55;
+      font-size: 14px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      margin-right: 8px;
+      border-radius: 999px;
+      background: var(--cyan);
+      color: white;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    @media (max-width: 760px) {
+      .stage { height: 980px; }
+      .node { width: calc(100% - 48px); left: 24px !important; right: auto !important; }
+      .user { top: 24px; }
+      .think { top: 110px; }
+      .model { top: 196px; }
+      .local { top: 282px; }
+      .weather { top: 368px; }
+      .rag { top: 454px; }
+      .web { top: 540px; }
+      .itinerary { top: 626px; }
+      .deps { top: 712px; }
+      .observe { top: 798px; }
+      .final { top: 884px; }
+      .edge { display: none; }
+      .caption { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="toolbar">
+      <h1>Pydantic AI 版 Think-Act-Observe + Multi-Agent</h1>
+      <div class="buttons">
+        <button id="play">播放</button>
+        <button id="next">下一步</button>
+        <button id="reset">重置</button>
+      </div>
+    </div>
+
+    <div class="stage" aria-live="polite">
+      <div class="edge e1" data-edge="0"></div>
+      <div class="edge e2" data-edge="1"></div>
+      <div class="edge e3" data-edge="2"></div>
+      <div class="edge e4" data-edge="3"></div>
+      <div class="edge e5" data-edge="4"></div>
+      <div class="edge e6" data-edge="5"></div>
+      <div class="edge e7" data-edge="6"></div>
+      <div class="edge e8" data-edge="7"></div>
+      <div class="edge e9" data-edge="8"></div>
+      <div class="edge e10" data-edge="9"></div>
+
+      <div class="node user" data-node="user">
+        <strong>用户输入</strong>
+        <span>“成都三日游，想看熊猫，也不要太累。”</span>
+      </div>
+      <div class="node think" data-node="think">
+        <strong>PlannerAgent</strong>
+        <span>Think：输出 PlanOutput 子任务列表。</span>
+      </div>
+      <div class="node model" data-node="model">
+        <strong>模型提供方</strong>
+        <span>OpenAI-compatible 模型被多个 Agent 复用。</span>
+      </div>
+      <div class="node local" data-node="local">
+        <strong>LocalTipsAgent</strong>
+        <span>本地提醒。</span>
+      </div>
+      <div class="node weather" data-node="weather">
+        <strong>WeatherAgent</strong>
+        <span>天气 API。</span>
+      </div>
+      <div class="node rag" data-node="rag">
+        <strong>RAGAgent</strong>
+        <span>旅行知识库。</span>
+      </div>
+      <div class="node web" data-node="web">
+        <strong>WebSearchAgent</strong>
+        <span>公开网页攻略。</span>
+      </div>
+      <div class="node itinerary" data-node="itinerary">
+        <strong>ItineraryAgent</strong>
+        <span>根据观察生成行程草案。</span>
+      </div>
+      <div class="node deps" data-node="deps">
+        <strong>TravelDeps</strong>
+        <span>RunContext 读取坐标、知识库、API 地址。</span>
+      </div>
+      <div class="node observe" data-node="observe">
+        <strong>ObserverAgent</strong>
+        <span>Observe：判断信息是否足够。</span>
+      </div>
+      <div class="node final" data-node="final">
+        <strong>FinalAgent</strong>
+        <span>输出 TravelPlanOutput。</span>
+      </div>
+
+      <div class="caption">
+        <strong><span class="badge" id="step-number">1</span><span id="step-title">用户提出旅行目标</span></strong>
+        <p id="step-desc">用户输入进入 TravelPlanAgent，后续不会直接塞给一个单体函数，而是进入框架化主流程。</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const steps = [
+      {
+        active: ["user"],
+        edges: [],
+        title: "用户提出旅行目标",
+        desc: "用户输入进入 TravelPlanAgent，后续不会直接塞给一个单体函数，而是进入框架化主流程。"
+      },
+      {
+        active: ["think", "model"],
+        edges: [0, 1],
+        title: "Think：规划 Agent 拆解任务",
+        desc: "planner_agent 输出 PlanOutput，例如调用 RAGAgent、LocalTipsAgent、ItineraryAgent。"
+      },
+      {
+        active: ["rag", "local", "itinerary"],
+        edges: [2, 4, 6],
+        title: "Act：调度多个副 Agent",
+        desc: "主控类根据结构化子任务调度多个 Pydantic AI 副 Agent，而不是让一个 Agent 包办所有职责。"
+      },
+      {
+        active: ["deps", "local", "rag"],
+        edges: [7],
+        title: "工具通过 RunContext 读取依赖",
+        desc: "副 Agent 的工具通过 TravelDeps 获取本地提醒、城市坐标、知识库和搜索 API 地址。"
+      },
+      {
+        active: ["observe"],
+        edges: [8],
+        title: "Observe：检查信息是否足够",
+        desc: "observer_agent 读取 SubAgentOutput，判断是否需要补充天气、网页搜索或其他子任务。"
+      },
+      {
+        active: ["weather", "web"],
+        edges: [3, 5, 9],
+        title: "Act Again：必要时补充调用",
+        desc: "如果观察阶段发现缺少实时天气或最新网页资料，主控类会继续调度对应副 Agent。"
+      },
+      {
+        active: ["final", "model"],
+        edges: [8],
+        title: "Final：结构化最终回答",
+        desc: "final_agent 汇总所有观察结果，输出 TravelPlanOutput，再转成 Markdown 展示给用户。"
+      }
+    ];
+
+    let index = 0;
+    let timer = null;
+    const nodes = [...document.querySelectorAll("[data-node]")];
+    const edges = [...document.querySelectorAll("[data-edge]")];
+    const stepNumber = document.getElementById("step-number");
+    const stepTitle = document.getElementById("step-title");
+    const stepDesc = document.getElementById("step-desc");
+
+    function render() {
+      const step = steps[index];
+      nodes.forEach((node) => {
+        const name = node.dataset.node;
+        const isActive = step.active.includes(name);
+        node.classList.toggle("active", isActive);
+        node.classList.toggle("dim", !isActive);
+      });
+      edges.forEach((edge, edgeIndex) => {
+        edge.classList.toggle("active", step.edges.includes(edgeIndex));
+      });
+      stepNumber.textContent = String(index + 1);
+      stepTitle.textContent = step.title;
+      stepDesc.textContent = step.desc;
+    }
+
+    function next() {
+      index = (index + 1) % steps.length;
+      render();
+    }
+
+    function play() {
+      clearInterval(timer);
+      timer = setInterval(next, 1450);
+    }
+
+    function reset() {
+      clearInterval(timer);
+      index = 0;
+      render();
+    }
+
+    document.getElementById("play").addEventListener("click", play);
+    document.getElementById("next").addEventListener("click", next);
+    document.getElementById("reset").addEventListener("click", reset);
+    render();
+  </script>
+</body>
+</html>

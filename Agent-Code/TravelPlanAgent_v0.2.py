@@ -17,9 +17,9 @@ class LLMConfig:
     """
     集中保存模型调用需要的配置：base_url、api_key、model_name。
     """
-    base_url: str = "https://chat.ecnu.edu.cn/open/api/v1"
-    api_key: str = ""
-    model_name: str = "ecnu-max"
+    base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key: str = "sk-1d114d89a96b4ffab1844506f910f3af"
+    model_name: str = "deepseek-v4-flash"
     temperature: float = 0.7
     timeout_seconds: int = 300
 

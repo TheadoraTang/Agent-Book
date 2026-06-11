@@ -108,9 +108,6 @@ Agent：根据天气结果，给出步行和穿衣建议。
 ```
 
 在代码里，我们先用统一的 `ToolResult` 表达工具结果：
-
-<!-- sbs-code -->
-
 ```python
 class ToolResult:
     tool_name: str
@@ -131,8 +128,6 @@ class ToolResult:
 | `content` | 工具返回内容 | 上海当前多云，气温 24 摄氏度 |
 
 然后，我们为工具定义一个统一接口：
-
-<!-- sbs-code -->
 
 ```python
 class BaseTool:
@@ -166,8 +161,6 @@ LOCAL_TRAVEL_TIPS = {
 ```
 
 对应工具类是：
-
-<!-- sbs-code -->
 
 ```python
 class LocalTravelTipsTool(BaseTool):
@@ -268,8 +261,6 @@ WeatherApiTool
 
 核心代码如下：
 
-<!-- sbs-code -->
-
 ```python
 query = urllib.parse.urlencode(
     {
@@ -368,8 +359,6 @@ WebSearchTool
 
 以 OpenAI Responses API 为例，可以这样注册内嵌 web_search：
 
-<!-- sbs-code -->
-
 ```python
 from openai import OpenAI
 
@@ -441,8 +430,6 @@ SEARCH_API_URL = "https://searchfree.site/api/search"
 - 可选的 AI 摘要。
 
 核心过程如下：
-
-<!-- sbs-code -->
 
 ```python
 query = f"{query_text} 旅游攻略 景点 路线"
@@ -551,8 +538,6 @@ height: 500px
 ```
 
 再把它拼接到 user message：
-
-<!-- sbs-code -->
 
 ```python
 return (

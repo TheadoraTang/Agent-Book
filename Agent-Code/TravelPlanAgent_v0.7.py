@@ -1,29 +1,22 @@
-﻿import json
-import socket
-import time
+import json
+import logging
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from pathlib import Path
+from dataclasses import dataclass, field
 
 import numpy as np
 
 
-BASE_URL = "https://chat.ecnu.edu.cn/open/api/v1"
-API_KEY = ""
-MODEL_NAME = "ecnu-plus"
-CHAT_COMPLETIONS_URL = f"{BASE_URL}/chat/completions"
-MAX_HISTORY_ROUNDS = 5
-LLM_TIMEOUT_SECONDS = 300
-SEARCH_API_URL = "https://searchfree.site/api/search"
-MAX_TOOL_ROUNDS = 3
+logger = logging.getLogger("travel_agent")
+logger.setLevel(logging.INFO)
+logger.handlers.clear()
+handler = logging.StreamHandler(sys.stderr)
+handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+logger.addHandler(handler)
+logger.propagate = False
 
-BASE_DIR = Path(__file__).resolve().parent
-BGE_M3_MODEL_PATH = BASE_DIR / "assets" / "bge-m3"
-
-_embedding_model = None
-_rag_chunks = None
-_rag_embeddings = None
 
 SYSTEM_PROMPT = """
 你是 TravelPlanAgent，一个具备工具调用和 RAG 能力的旅行规划助手。
@@ -33,12 +26,10 @@ SYSTEM_PROMPT = """
 - get_local_travel_tips：读取代码内置的城市出行提醒。
 - get_weather_from_api：调用天气 API 获取实时天气。
 - web_search_travel_guide：调用搜索 API 获取网页攻略、景点、路线信息。
-- rag_search_travel_knowledge：使用本地 assets/bge-m3 embedding 模型检索课程内置旅游知识库。
+- rag_search_travel_knowledge：使用 bge-m3 embedding 模型检索课程内置旅游知识库。
 
 当用户询问目的地怎么玩、路线安排、景点建议、雨天安排、亲子/老人/预算等旅行规划问题时，
 你应优先调用 rag_search_travel_knowledge 获取本地知识库片段。
-如果问题还涉及天气，再额外调用 get_weather_from_api。
-如果问题需要最新网页攻略，再额外调用 web_search_travel_guide。
 
 最终回答必须说明：
 1. 本轮使用了哪些 Tools。
@@ -105,339 +96,391 @@ TRAVEL_KNOWLEDGE = """
 旅行规划时，每天不要安排过多景点。城市初访建议每天 2 到 4 个主要点位，并留出交通、排队、用餐和休息时间。亲子、老人同行时要降低步行强度。雨天优先安排博物馆、展览、商场、茶馆和餐饮体验。预算有限时，应优先选择公共交通和集中区域游玩。
 """
 
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_local_travel_tips",
-            "description": "读取代码内置的城市出行提醒，包括交通、预约、人流、节奏和避坑建议。",
-            "parameters": {
-                "type": "object",
-                "properties": {"city": {"type": "string", "description": "城市名，例如：北京、上海、杭州。"}},
-                "required": ["city"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_weather_from_api",
-            "description": "调用天气 API 获取城市当前天气、气温、湿度、降水和风速。",
-            "parameters": {
-                "type": "object",
-                "properties": {"city": {"type": "string", "description": "城市名，例如：北京、上海、杭州。"}},
-                "required": ["city"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "web_search_travel_guide",
-            "description": "调用搜索 API 搜索目的地旅游攻略、景点、路线和注意事项。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query_text": {"type": "string", "description": "搜索关键词，例如：北京三日游、上海亲子旅行攻略。"}
-                },
-                "required": ["query_text"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "rag_search_travel_knowledge",
-            "description": "使用本地 assets/bge-m3 embedding 模型检索课程内置旅游知识库，返回最相关的知识片段。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "用于 RAG 检索的问题，例如：杭州雨天怎么玩。"},
-                    "top_k": {"type": "integer", "description": "返回的知识片段数量，默认 3。"},
-                },
-                "required": ["query"],
-            },
-        },
-    },
-]
 
+@dataclass
+class LLMConfig:
+    base_url: str = "https://chat.ecnu.edu.cn/open/api/v1"
+    api_key: str = "sk-4b905783f8ab4fed9f7c1879aaf2ae58"
+    model_name: str = "ecnu-plus"
+    temperature: float = 0.7
+    timeout_seconds: int = 300
 
-def call_llm_response(messages, temperature=0.7, tools=None, tool_choice=None):
-    if API_KEY in ["", "YOUR_API_KEY"]:
-        return {"role": "assistant", "content": "请先把文件顶部的 API_KEY 替换成真实密钥。"}
+class LLMClient:
+    def __init__(self, config: LLMConfig | None = None, openai_client: object | None = None) -> None:
+        self.config = config or LLMConfig()
+        self.openai_client = openai_client
 
-    payload = {"model": MODEL_NAME, "messages": messages, "temperature": temperature}
-    if tools:
-        payload["tools"] = tools
-    if tool_choice:
-        payload["tool_choice"] = tool_choice
+    def chat_response(
+        self,
+        messages: list[dict[str, object]],
+        temperature: float | None = None,
+        tools: list[dict[str, object]] | None = None,
+        tool_choice: str | None = None,
+    ) -> dict[str, object]:
+        if self.config.api_key in ["", "YOUR_API_KEY"]:
+            return {"role": "assistant", "content": "请先把 LLMConfig 里的 api_key 替换成真实密钥。"}
 
-    request = urllib.request.Request(
-        CHAT_COMPLETIONS_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {API_KEY}"},
-        method="POST",
-    )
-
-    for attempt in range(2):
         try:
-            with urllib.request.urlopen(request, timeout=LLM_TIMEOUT_SECONDS) as response:
-                result = json.loads(response.read().decode("utf-8"))
-                return result["choices"][0]["message"]
-        except urllib.error.HTTPError as error:
-            detail = error.read().decode("utf-8", errors="ignore")
-            return {"role": "assistant", "content": f"API 请求失败，状态码：{error.code}\n{detail}"}
-        except (socket.timeout, TimeoutError) as error:
-            if attempt == 0:
-                print("[模型调用超时] 等待 2 秒后重试一次...")
-                time.sleep(2)
-                continue
-            return {"role": "assistant", "content": f"调用模型超时：{error}。可以稍后重试。"}
+            completion = self._get_openai_client().chat.completions.create(
+                model=self.config.model_name,
+                messages=messages,
+                temperature=self.config.temperature if temperature is None else temperature,
+                tools=tools,
+                tool_choice=tool_choice,
+            )
+            return self.message_to_dict(completion.choices[0].message)
+        except ImportError:
+            return {"role": "assistant", "content": "当前环境缺少 openai 包，请先运行：pip install openai"}
         except Exception as error:
             return {"role": "assistant", "content": f"调用模型时出现错误：{error}"}
 
+    def chat(self, messages: list[dict[str, object]], temperature: float | None = None) -> str:
+        return str(self.chat_response(messages, temperature=temperature).get("content", ""))
 
-def load_embedding_model():
-    global _embedding_model
-    if _embedding_model is not None:
-        return _embedding_model
-    if not BGE_M3_MODEL_PATH.exists():
-        raise FileNotFoundError(f"没有找到本地模型目录：{BGE_M3_MODEL_PATH}")
-    try:
-        from sentence_transformers import SentenceTransformer
-    except ImportError as error:
-        raise ImportError(
-            "当前环境缺少 sentence_transformers，无法加载 assets/bge-m3 生成 embedding。"
-            "请先安装：pip install sentence-transformers torch"
-        ) from error
+    def _get_openai_client(self) -> object:
+        if self.openai_client is not None:
+            return self.openai_client
 
-    print(f"[RAG] 正在加载本地 embedding 模型：{BGE_M3_MODEL_PATH}")
-    _embedding_model = SentenceTransformer(str(BGE_M3_MODEL_PATH))
-    return _embedding_model
+        from openai import OpenAI
 
+        self.openai_client = OpenAI(
+            api_key=self.config.api_key,
+            base_url=self.config.base_url,
+            timeout=self.config.timeout_seconds,
+        )
+        return self.openai_client
 
-def embed_texts(texts):
-    model = load_embedding_model()
-    embeddings = model.encode(
-        texts,
-        batch_size=8,
-        normalize_embeddings=True,
-        show_progress_bar=False,
-    )
-    return np.asarray(embeddings, dtype=np.float32)
-
-
-def split_knowledge_into_chunks(text):
-    chunks = []
-    for block in text.strip().split("\n\n"):
-        chunk = block.strip()
-        if chunk:
-            chunks.append(chunk)
-    return chunks
-
-
-def build_rag_index():
-    global _rag_chunks, _rag_embeddings
-    if _rag_chunks is not None and _rag_embeddings is not None:
-        return _rag_chunks, _rag_embeddings
-    _rag_chunks = split_knowledge_into_chunks(TRAVEL_KNOWLEDGE)
-    print(f"[RAG] 正在为 {len(_rag_chunks)} 个知识片段生成 embedding...")
-    _rag_embeddings = embed_texts(_rag_chunks)
-    return _rag_chunks, _rag_embeddings
-
-
-def rag_search_travel_knowledge(query, top_k=3):
-    try:
-        top_k = int(top_k)
-    except (TypeError, ValueError):
-        top_k = 3
-    top_k = max(1, min(top_k, 5))
-
-    try:
-        chunks, chunk_embeddings = build_rag_index()
-        query_embedding = embed_texts([query])[0]
-    except Exception as error:
-        return f"RAG 检索失败：{error}"
-
-    scores = chunk_embeddings @ query_embedding
-    ranked_indices = np.argsort(scores)[::-1][:top_k]
-
-    lines = [
-        "RAG 检索工具：rag_search_travel_knowledge",
-        f"Embedding 模型：{BGE_M3_MODEL_PATH}",
-        f"检索问题：{query}",
-        "最相关知识片段：",
-    ]
-    for rank, index in enumerate(ranked_indices, start=1):
-        lines.append(f"{rank}. 相似度：{float(scores[index]):.4f}")
-        lines.append(chunks[index])
-    return "\n".join(lines)
-
-
-def get_local_travel_tips(city):
-    return LOCAL_TRAVEL_TIPS.get(city, f"没有识别到支持城市。当前支持：{', '.join(LOCAL_TRAVEL_TIPS)}。")
-
-
-def get_weather_from_api(city):
-    coordinates = CITY_COORDINATES.get(city)
-    if not coordinates:
-        return f"没有识别到支持城市，无法查询天气 API。当前支持：{', '.join(CITY_COORDINATES)}。"
-
-    query = urllib.parse.urlencode(
-        {
-            "latitude": coordinates["latitude"],
-            "longitude": coordinates["longitude"],
-            "current": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m",
-            "timezone": "Asia/Shanghai",
+    def message_to_dict(self, message: object) -> dict[str, object]:
+        if hasattr(message, "model_dump"):
+            return message.model_dump(exclude_none=True)
+        if isinstance(message, dict):
+            return message
+        return {
+            "role": getattr(message, "role", "assistant"),
+            "content": getattr(message, "content", ""),
+            "tool_calls": getattr(message, "tool_calls", None) or [],
         }
-    )
-    url = f"https://api.open-meteo.com/v1/forecast?{query}"
 
-    try:
-        with urllib.request.urlopen(url, timeout=20) as response:
-            data = json.loads(response.read().decode("utf-8"))
-    except Exception as error:
-        return f"天气 API 调用失败：{error}"
+@dataclass
+class ConversationMemory:
+    max_rounds: int = 5
+    messages: list[dict[str, object]] = field(default_factory=list)
 
-    current = data.get("current", {})
-    weather_code = current.get("weather_code")
-    weather_text = WEATHER_CODE_MAP.get(weather_code, f"未知天气代码 {weather_code}")
-    return (
-        f"{city} 当前天气：{weather_text}，"
-        f"气温 {current.get('temperature_2m')} 摄氏度，"
-        f"相对湿度 {current.get('relative_humidity_2m')}%，"
-        f"降水量 {current.get('precipitation')} mm，"
-        f"风速 {current.get('wind_speed_10m')} km/h。"
-        "数据来自 Open-Meteo 天气 API。"
-    )
+    def add_user_message(self, content: str) -> None:
+        self.messages.append({"role": "user", "content": content})
+        self.trim()
 
+    def add_assistant_message(self, content: str) -> None:
+        self.messages.append({"role": "assistant", "content": content})
+        self.trim()
 
-def web_search_travel_guide(query_text):
-    query = f"{query_text} 旅游攻略 景点 路线"
-    payload = {"query": query, "max_results": 3}
-    request = urllib.request.Request(
-        SEARCH_API_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "User-Agent": "TravelPlanAgent/0.6"},
-        method="POST",
-    )
+    def build_messages(self, system_prompt: str, user_input: str) -> list[dict[str, object]]:
+        return [{"role": "system", "content": system_prompt}] + self.messages + [{"role": "user", "content": user_input}]
 
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            data = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", errors="ignore")
-        return f"web_search API 请求失败，状态码：{error.code}\n{detail}"
-    except Exception as error:
-        return f"web_search 调用失败：{error}"
+    def trim(self) -> None:
+        self.messages = self.messages[-self.max_rounds * 2 :]
 
-    results = data.get("results", [])[:3]
-    lines = ["web_search 搜索 API：searchfree.site", f"搜索词：{query}"]
-    if data.get("answer"):
-        lines.append(f"AI 摘要：{data['answer'][:300]}")
-    lines.append("搜索结果：")
-    for index, result in enumerate(results, start=1):
-        lines.append(f"{index}. 标题：{result.get('title', '无标题')}")
-        if result.get("content"):
-            lines.append(f"   摘要：{result['content'][:160]}")
-        if result.get("url"):
-            lines.append(f"   链接：{result['url']}")
-    if not results:
-        lines.append("没有返回搜索结果。")
-    return "\n".join(lines)
+@dataclass
+class ToolResult:
+    tool_name: str
+    function_name: str
+    content: str
+    success: bool = True
+    raw_data: object = None
 
 
-def parse_tool_arguments(arguments_text):
+class BaseTool:
+    name = "base_tool"
+    function_name = "run"
+    description = "基础工具"
+    parameters: dict[str, object] = {"type": "object", "properties": {}}
+
+    def to_openai_tool(self) -> dict[str, object]:
+        return {"type": "function", "function": {"name": self.function_name, "description": self.description, "parameters": self.parameters}}
+
+    def run(self, arguments: dict[str, object]) -> ToolResult:
+        raise NotImplementedError
+
+
+class LocalTravelTipsTool(BaseTool):
+    name = "local_function"
+    function_name = "get_local_travel_tips"
+    description = "读取代码内置的城市出行提醒，包括交通、预约、人流、节奏和避坑建议。"
+    parameters = {
+        "type": "object",
+        "properties": {"city": {"type": "string", "description": "城市名，例如：北京、上海、杭州。"}},
+        "required": ["city"],
+    }
+
+    def run(self, arguments: dict[str, object]) -> ToolResult:
+        city = str(arguments.get("city", "")).strip()
+        content = LOCAL_TRAVEL_TIPS.get(city, f"没有识别到支持城市。当前支持：{', '.join(LOCAL_TRAVEL_TIPS)}。")
+        return ToolResult(self.name, self.function_name, content, bool(city))
+
+
+class WeatherApiTool(BaseTool):
+    name = "weather_api"
+    function_name = "get_weather_from_api"
+    description = "调用天气 API 获取城市当前天气、气温、湿度、降水和风速。"
+    parameters = LocalTravelTipsTool.parameters
+
+    def run(self, arguments: dict[str, object]) -> ToolResult:
+        city = str(arguments.get("city", "")).strip()
+        coordinates = CITY_COORDINATES.get(city)
+        if not coordinates:
+            content = f"没有识别到支持城市，无法查询天气 API。当前支持：{', '.join(CITY_COORDINATES)}。"
+            return ToolResult(self.name, self.function_name, content, False)
+
+        query = urllib.parse.urlencode(
+            {
+                "latitude": coordinates["latitude"],
+                "longitude": coordinates["longitude"],
+                "current": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m",
+                "timezone": "Asia/Shanghai",
+            }
+        )
+        try:
+            with urllib.request.urlopen(f"https://api.open-meteo.com/v1/forecast?{query}", timeout=20) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except Exception as error:
+            return ToolResult(self.name, self.function_name, f"天气 API 调用失败：{error}", False)
+
+        current = data.get("current", {})
+        weather_text = WEATHER_CODE_MAP.get(current.get("weather_code"), f"未知天气代码 {current.get('weather_code')}")
+        content = (
+            f"{city} 当前天气：{weather_text}，"
+            f"气温 {current.get('temperature_2m')} 摄氏度，"
+            f"相对湿度 {current.get('relative_humidity_2m')}%，"
+            f"降水量 {current.get('precipitation')} mm，"
+            f"风速 {current.get('wind_speed_10m')} km/h。"
+            "数据来自 Open-Meteo 天气 API。"
+        )
+        return ToolResult(self.name, self.function_name, content, True, current)
+
+
+class WebSearchTool(BaseTool):
+    name = "web_search"
+    function_name = "web_search_travel_guide"
+    description = "调用搜索 API 搜索目的地旅游攻略、景点、路线和注意事项。"
+    search_api_url = "https://searchfree.site/api/search"
+    parameters = {
+        "type": "object",
+        "properties": {"query_text": {"type": "string", "description": "搜索关键词，例如：北京三日游、上海亲子旅行攻略。"}},
+        "required": ["query_text"],
+    }
+
+    def run(self, arguments: dict[str, object]) -> ToolResult:
+        query_text = str(arguments.get("query_text", "")).strip()
+        query = f"{query_text} 旅游攻略 景点 路线"
+        request = urllib.request.Request(
+            self.search_api_url,
+            data=json.dumps({"query": query, "max_results": 3}).encode("utf-8"),
+            headers={"Content-Type": "application/json", "User-Agent": "TravelPlanAgent/0.7"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode("utf-8", errors="ignore")
+            return ToolResult(self.name, self.function_name, f"web_search API 请求失败，状态码：{error.code}\n{detail}", False)
+        except Exception as error:
+            return ToolResult(self.name, self.function_name, f"web_search 调用失败：{error}", False)
+
+        results = data.get("results", [])[:3]
+        lines = ["web_search 搜索 API：searchfree.site", f"搜索词：{query}"]
+        if data.get("answer"):
+            lines.append(f"AI 摘要：{data['answer'][:300]}")
+        lines.append("搜索结果：")
+        for index, result in enumerate(results, start=1):
+            lines.append(f"{index}. 标题：{result.get('title', '无标题')}")
+            if result.get("content"):
+                lines.append(f"   摘要：{result['content'][:160]}")
+            if result.get("url"):
+                lines.append(f"   链接：{result['url']}")
+        if not results:
+            lines.append("没有返回搜索结果。")
+        return ToolResult(self.name, self.function_name, "\n".join(lines), bool(results), results)
+
+
+class RagKnowledgeTool(BaseTool):
+    name = "rag_search"
+    function_name = "rag_search_travel_knowledge"
+    description = "使用 bge-m3 embedding 模型检索课程内置旅游知识库，返回最相关的知识片段。"
+    parameters = {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "用于 RAG 检索的问题，例如：杭州雨天怎么玩。"},
+            "top_k": {"type": "integer", "description": "返回的知识片段数量，默认 3。"},
+        },
+        "required": ["query"],
+    }
+
+    def __init__(self, knowledge_text: str = TRAVEL_KNOWLEDGE, model_name: str = "BAAI/bge-m3") -> None:
+        self.knowledge_text = knowledge_text
+        self.model_name = model_name
+        self.embedding_model = None
+        self.chunks: list[str] | None = None
+        self.embeddings = None
+
+    def run(self, arguments: dict[str, object]) -> ToolResult:
+        query = str(arguments.get("query", "")).strip()
+        try:
+            top_k = max(1, min(int(arguments.get("top_k", 3)), 5))
+        except (TypeError, ValueError):
+            top_k = 3
+
+        try:
+            chunks, chunk_embeddings = self.build_index()
+            query_embedding = self.embed_texts([query])[0]
+            scores = chunk_embeddings @ query_embedding
+            ranked_indices = np.argsort(scores)[::-1][:top_k]
+        except Exception as error:
+            return ToolResult(self.name, self.function_name, f"RAG 检索失败：{error}", False)
+
+        lines = ["RAG 检索工具：rag_search_travel_knowledge", f"检索问题：{query}", "最相关知识片段："]
+        raw_results = []
+        for rank, index in enumerate(ranked_indices, start=1):
+            score = float(scores[index])
+            lines.append(f"{rank}. 相似度：{score:.4f}")
+            lines.append(chunks[index])
+            raw_results.append({"score": score, "content": chunks[index]})
+        return ToolResult(self.name, self.function_name, "\n".join(lines), True, raw_results)
+
+    def build_index(self):
+        if self.chunks is not None and self.embeddings is not None:
+            return self.chunks, self.embeddings
+        self.chunks = [chunk.strip() for chunk in self.knowledge_text.strip().split("\n\n") if chunk.strip()]
+        logger.info("RAG: 正在为 %s 个知识片段生成 embedding...", len(self.chunks))
+        self.embeddings = self.embed_texts(self.chunks)
+        return self.chunks, self.embeddings
+
+    def embed_texts(self, texts: list[str]):
+        model = self.load_embedding_model()
+        embeddings = model.encode(texts, batch_size=8, normalize_embeddings=True, show_progress_bar=False)
+        return np.asarray(embeddings, dtype=np.float32)
+
+    def load_embedding_model(self):
+        if self.embedding_model is not None:
+            return self.embedding_model
+        logger.info("RAG: 正在加载 bge-m3 embedding 模型...")
+        from sentence_transformers import SentenceTransformer
+
+        self.embedding_model = SentenceTransformer(self.model_name)
+        return self.embedding_model
+
+
+def parse_tool_arguments(arguments_text: str) -> dict[str, object]:
     try:
         return json.loads(arguments_text or "{}")
     except json.JSONDecodeError:
         return {}
 
 
-def execute_tool_call(tool_call):
-    function_info = tool_call.get("function", {})
-    function_name = function_info.get("name", "")
-    arguments = parse_tool_arguments(function_info.get("arguments", "{}"))
+class TravelPlanAgent:
+    def __init__(
+        self,
+        llm_client: LLMClient | None = None,
+        memory: ConversationMemory | None = None,
+        tools: list[BaseTool] | None = None,
+        system_prompt: str = SYSTEM_PROMPT,
+        max_tool_rounds: int = 3,
+    ) -> None:
+        self.llm_client = llm_client or LLMClient()
+        self.memory = memory or ConversationMemory()
+        self.tools = tools or [LocalTravelTipsTool(), WeatherApiTool(), WebSearchTool(), RagKnowledgeTool()]
+        self.tool_map = {tool.function_name: tool for tool in self.tools}
+        self.system_prompt = system_prompt
+        self.max_tool_rounds = max_tool_rounds
 
-    if function_name == "get_local_travel_tips":
-        city = arguments.get("city", "")
-        print(f"[Act] get_local_travel_tips(city='{city}')")
-        tool_result = get_local_travel_tips(city)
-    elif function_name == "get_weather_from_api":
-        city = arguments.get("city", "")
-        print(f"[Act] get_weather_from_api(city='{city}')")
-        tool_result = get_weather_from_api(city)
-    elif function_name == "web_search_travel_guide":
-        query_text = arguments.get("query_text", "")
-        print(f"[Act] web_search_travel_guide(query_text='{query_text}')")
-        tool_result = web_search_travel_guide(query_text)
-    elif function_name == "rag_search_travel_knowledge":
-        query = arguments.get("query", "")
-        top_k = arguments.get("top_k", 3)
-        print(f"[Act] rag_search_travel_knowledge(query='{query}', top_k={top_k})")
-        tool_result = rag_search_travel_knowledge(query, top_k)
-    else:
-        tool_result = f"未知工具：{function_name}"
+    def run(self, user_input: str) -> str:
+        messages = self.memory.build_messages(self.system_prompt, user_input)
 
-    print(f"[Observe] {tool_result}")
-    return tool_result
-
-
-def trim_history(conversation_history):
-    max_messages = MAX_HISTORY_ROUNDS * 2
-    return conversation_history[-max_messages:]
-
-
-def run_agent(user_input, conversation_history):
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history
-    messages.append({"role": "user", "content": user_input})
-
-    print("[Think] 向模型注册 Tools，让模型决定是否调用 RAG、天气、搜索或本地函数...")
-    used_tools = []
-    for round_index in range(1, MAX_TOOL_ROUNDS + 1):
-        response = call_llm_response(messages, temperature=0.2, tools=TOOLS, tool_choice="auto")
-        tool_calls = response.get("tool_calls", [])
-        if not tool_calls:
-            print("[Think] 模型没有继续调用工具。")
-            if used_tools:
-                break
-            return response.get("content", "模型没有返回可用回复。")
-
-        print(f"[Think 结果] 第 {round_index} 轮请求调用 {len(tool_calls)} 个 Tool。")
-        messages.append(response)
-        for tool_call in tool_calls:
-            function_name = tool_call.get("function", {}).get("name", "")
-            used_tools.append(function_name)
-            tool_result = execute_tool_call(tool_call)
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call.get("id", ""),
-                    "name": function_name,
-                    "content": tool_result,
-                }
+        logger.info("Think: 向模型注册 Tools，让模型决定是否调用 RAG、天气、搜索或本地函数...")
+        used_tools = []
+        for round_index in range(1, self.max_tool_rounds + 1):
+            response = self.llm_client.chat_response(
+                messages,
+                temperature=0.2,
+                tools=[tool.to_openai_tool() for tool in self.tools],
+                tool_choice="auto",
             )
+            tool_calls = response.get("tool_calls", [])
+            if not tool_calls:
+                logger.info("Think: 模型没有继续调用工具。")
+                if used_tools:
+                    break
+                final_answer = str(response.get("content", "模型没有返回可用回复。"))
+                self.update_memory(user_input, final_answer)
+                return final_answer
 
-    print("[Final] 将工具 Observe 结果交回模型，生成最终回答...")
-    messages.append(
-        {
-            "role": "user",
-            "content": (
-                "请停止调用工具，只根据上面的工具观察结果生成自然语言回答。"
-                "必须说明本轮使用了哪些工具，并重点说明 RAG 检索到的知识如何影响你的旅行建议。"
-            ),
-        }
-    )
-    final_response = call_llm_response(messages, temperature=0.7)
-    return final_response.get("content", "模型没有返回可用回复。")
+            logger.info("Think: 第 %s 轮请求调用 %s 个 Tool。", round_index, len(tool_calls))
+            messages.append(response)
+            for tool_call in tool_calls:
+                result = self.execute_tool_call(tool_call)
+                used_tools.append(result.function_name)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.get("id", ""),
+                        "name": result.function_name,
+                        "content": result.content,
+                    }
+                )
+
+        logger.info("Finalizing: 将工具 Observe 结果交回模型，生成最终回答...")
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "请停止调用工具，只根据上面的工具观察结果生成自然语言回答。"
+                    "必须说明本轮使用了哪些工具，并重点说明 RAG 检索到的知识如何影响你的旅行建议。"
+                ),
+            }
+        )
+        final_response = self.llm_client.chat_response(messages, temperature=0.7)
+        final_answer = str(final_response.get("content", "模型没有返回可用回复。"))
+        self.update_memory(user_input, final_answer)
+        return final_answer
+
+    def execute_tool_call(self, tool_call: dict[str, object]) -> ToolResult:
+        function_info = tool_call.get("function", {})
+        function_name = function_info.get("name", "") if isinstance(function_info, dict) else ""
+        arguments_text = function_info.get("arguments", "{}") if isinstance(function_info, dict) else "{}"
+        arguments = parse_tool_arguments(str(arguments_text))
+
+        tool = self.tool_map.get(function_name)
+        if not tool:
+            result = ToolResult("unknown_tool", function_name, f"未知工具：{function_name}", False)
+        else:
+            argument_text = ", ".join(f"{key}={value!r}" for key, value in arguments.items())
+            logger.info("Tool Call: %s(%s)", function_name, argument_text)
+            result = tool.run(arguments)
+
+        logger.info("Observe: %s", result.content)
+        return result
+
+    def update_memory(self, user_input: str, final_answer: str) -> None:
+        self.memory.add_user_message(user_input)
+        self.memory.add_assistant_message(final_answer)
 
 
-def main():
+def run_agent(user_input: str, conversation_history: list[dict[str, object]]) -> str:
+    memory = ConversationMemory(messages=list(conversation_history))
+    agent = TravelPlanAgent(memory=memory)
+    return agent.run(user_input)
+
+
+def trim_history(conversation_history: list[dict[str, object]]) -> list[dict[str, object]]:
+    return conversation_history[-ConversationMemory().max_rounds * 2 :]
+
+
+def main() -> None:
     print("TravelPlanAgent v0.7：在 v0.6 基础上增加基于 bge-m3 embedding 的 RAG")
     print("可用 Tools：local_function、weather_api、web_search、rag_search_travel_knowledge。")
     print("输入 exit、quit 或 退出 可以结束对话。")
 
-    conversation_history = []
+    agent = TravelPlanAgent()
 
     while True:
         user_input = input("\n你：").strip()
@@ -445,12 +488,8 @@ def main():
             print("TravelPlanAgent：下次旅行再见！")
             break
 
-        final_answer = run_agent(user_input, conversation_history)
+        final_answer = agent.run(user_input)
         print(f"TravelPlanAgent：{final_answer}")
-
-        conversation_history.append({"role": "user", "content": user_input})
-        conversation_history.append({"role": "assistant", "content": final_answer})
-        conversation_history = trim_history(conversation_history)
 
 
 if __name__ == "__main__":

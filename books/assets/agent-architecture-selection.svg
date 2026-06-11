@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="840" viewBox="0 0 1400 840" role="img" aria-labelledby="title desc">
+  <title id="title">Agent 架构模式选型图</title>
+  <desc id="desc">展示六种常见 Agent 架构模式及其适用场景。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#657084"/>
+    </marker>
+    <style>
+      .bg{fill:#f6f8fb}.title{font:700 36px Arial,"Microsoft YaHei",sans-serif;fill:#1d2636}
+      .sub{font:22px Arial,"Microsoft YaHei",sans-serif;fill:#657084}
+      .h{font:700 24px Arial,"Microsoft YaHei",sans-serif}.body{font:20px Arial,"Microsoft YaHei",sans-serif;fill:#1d2636}
+      .foot{font:22px Arial,"Microsoft YaHei",sans-serif;fill:#1d2636}
+    </style>
+  </defs>
+  <rect class="bg" width="1400" height="840"/>
+  <text class="title" x="54" y="70">Agent 架构模式选型图</text>
+  <text class="sub" x="56" y="112">不同架构不是互相替代，而是服务于不同复杂度、可靠性和可控性需求。</text>
+
+  <g transform="translate(80,180)">
+    <rect width="330" height="180" rx="10" fill="#eef4ff" stroke="#2864d8" stroke-width="3"/>
+    <text class="h" x="26" y="55" fill="#2864d8">Single Agent Loop</text>
+    <text class="body" x="26" y="105">任务短、边界清晰</text>
+    <text class="body" x="26" y="140">实现最简单</text>
+  </g>
+  <g transform="translate(490,180)">
+    <rect width="330" height="180" rx="10" fill="#f0fbf6" stroke="#16885f" stroke-width="3"/>
+    <text class="h" x="26" y="55" fill="#16885f">Plan &amp; Execute</text>
+    <text class="body" x="26" y="105">先计划再执行</text>
+    <text class="body" x="26" y="140">适合长任务审查</text>
+  </g>
+  <g transform="translate(900,180)">
+    <rect width="330" height="180" rx="10" fill="#f4f0ff" stroke="#7a4ed8" stroke-width="3"/>
+    <text class="h" x="26" y="55" fill="#7a4ed8">Multi-Agent</text>
+    <text class="body" x="26" y="105">多角色协作</text>
+    <text class="body" x="26" y="140">上下文相互隔离</text>
+  </g>
+  <g transform="translate(80,480)">
+    <rect width="330" height="180" rx="10" fill="#fff6e5" stroke="#b36a00" stroke-width="3"/>
+    <text class="h" x="26" y="55" fill="#b36a00">Reflection</text>
+    <text class="body" x="26" y="105">生成后自查</text>
+    <text class="body" x="26" y="140">提升输出质量</text>
+  </g>
+  <g transform="translate(490,480)">
+    <rect width="330" height="180" rx="10" fill="#eef4ff" stroke="#2864d8" stroke-width="3"/>
+    <text class="h" x="26" y="55" fill="#2864d8">RAG + Agent</text>
+    <text class="body" x="26" y="105">需要外部知识</text>
+    <text class="body" x="26" y="140">按需检索</text>
+  </g>
+  <g transform="translate(900,480)">
+    <rect width="330" height="180" rx="10" fill="#f0fbf6" stroke="#16885f" stroke-width="3"/>
+    <text class="h" x="26" y="55" fill="#16885f">Workflow / DAG</text>
+    <text class="body" x="26" y="105">流程稳定可控</text>
+    <text class="body" x="26" y="140">生产可靠性高</text>
+  </g>
+
+  <line x1="410" y1="270" x2="490" y2="270" stroke="#657084" stroke-width="4" marker-end="url(#arrow)"/>
+  <line x1="820" y1="270" x2="900" y2="270" stroke="#657084" stroke-width="4" marker-end="url(#arrow)"/>
+  <line x1="245" y1="360" x2="245" y2="480" stroke="#657084" stroke-width="4" marker-end="url(#arrow)"/>
+  <line x1="655" y1="360" x2="655" y2="480" stroke="#657084" stroke-width="4" marker-end="url(#arrow)"/>
+  <line x1="1065" y1="360" x2="1065" y2="480" stroke="#657084" stroke-width="4" marker-end="url(#arrow)"/>
+  <text class="foot" x="84" y="730">TravelPlanAgent v0.8 采用：MainAgent 编排 + SubAgent 协作 + RAG + 轻量 Reflection</text>
+</svg>

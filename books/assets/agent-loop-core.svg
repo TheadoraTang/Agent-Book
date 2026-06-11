@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Agent 核心循环</title>
+  <desc id="desc">展示 Agent 从感知、推理、行动到观察的循环过程。</desc>
+  <defs>
+    <marker id="arrow-blue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#2864d8"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#7a4ed8"/>
+    </marker>
+    <marker id="arrow-amber" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#b36a00"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#16885f"/>
+    </marker>
+    <style>
+      .bg{fill:#f6f8fb}.title{font:700 36px Arial,"Microsoft YaHei",sans-serif;fill:#1d2636}
+      .sub{font:22px Arial,"Microsoft YaHei",sans-serif;fill:#657084}
+      .box-title{font:700 24px Arial,"Microsoft YaHei",sans-serif}.body{font:20px Arial,"Microsoft YaHei",sans-serif;fill:#1d2636}
+      .small{font:18px Arial,"Microsoft YaHei",sans-serif;fill:#657084}
+    </style>
+  </defs>
+  <rect class="bg" width="1200" height="720"/>
+  <text class="title" x="50" y="70">Agent 核心循环：从一次回答到持续工作</text>
+  <text class="sub" x="52" y="112">每轮循环都会把工具结果写回上下文，再决定下一步是否继续。</text>
+
+  <rect x="90" y="210" width="240" height="130" rx="10" fill="#eef4ff" stroke="#2864d8" stroke-width="3"/>
+  <text class="box-title" x="118" y="252" fill="#2864d8">感知 Perceive</text>
+  <text class="body" x="118" y="292">读取用户输入</text>
+  <text class="body" x="118" y="322">上下文 / 工具结果</text>
+
+  <rect x="480" y="150" width="240" height="130" rx="10" fill="#f4f0ff" stroke="#7a4ed8" stroke-width="3"/>
+  <text class="box-title" x="508" y="192" fill="#7a4ed8">推理 Think</text>
+  <text class="body" x="508" y="232">判断缺少什么</text>
+  <text class="body" x="508" y="262">选择工具或结束</text>
+
+  <rect x="870" y="210" width="240" height="130" rx="10" fill="#fff6e5" stroke="#b36a00" stroke-width="3"/>
+  <text class="box-title" x="898" y="252" fill="#b36a00">行动 Act</text>
+  <text class="body" x="898" y="292">调用函数 / API</text>
+  <text class="body" x="898" y="322">执行外部操作</text>
+
+  <rect x="480" y="450" width="240" height="130" rx="10" fill="#f0fbf6" stroke="#16885f" stroke-width="3"/>
+  <text class="box-title" x="508" y="492" fill="#16885f">观察 Observe</text>
+  <text class="body" x="508" y="532">读取返回值</text>
+  <text class="body" x="508" y="562">写入 messages</text>
+
+  <path d="M330 275 C390 245 420 225 480 215" fill="none" stroke="#2864d8" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <path d="M720 215 C780 225 810 245 870 275" fill="none" stroke="#7a4ed8" stroke-width="4" marker-end="url(#arrow-purple)"/>
+  <path d="M990 340 C930 420 820 475 720 500" fill="none" stroke="#b36a00" stroke-width="4" marker-end="url(#arrow-amber)"/>
+  <path d="M480 500 C375 475 270 420 210 340" fill="none" stroke="#16885f" stroke-width="4" marker-end="url(#arrow-green)"/>
+
+  <rect x="395" y="320" width="410" height="70" rx="10" fill="#ffffff" stroke="#d9e0ea" stroke-width="2"/>
+  <text class="body" x="467" y="362">完成了吗？如果没有，进入下一轮</text>
+  <line x1="720" y1="355" x2="980" y2="355" stroke="#657084" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <text class="body" x="1005" y="362" fill="#16885f">Final Answer</text>
+</svg>

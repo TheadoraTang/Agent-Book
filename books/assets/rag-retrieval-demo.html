@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RAG 检索与相似度排序演示</title>
+  <style>
+    :root {
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --ink: #1d2636;
+      --muted: #657084;
+      --line: #d9e0ea;
+      --blue: #2864d8;
+      --green: #16885f;
+      --amber: #b36a00;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+
+    .demo {
+      min-height: 100vh;
+      padding: 22px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .header,
+    .workspace {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(29, 38, 54, 0.06);
+    }
+
+    .header {
+      padding: 18px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    .hint {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    button {
+      border: 1px solid var(--blue);
+      background: var(--blue);
+      color: #fff;
+      border-radius: 6px;
+      padding: 9px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .workspace {
+      padding: 18px;
+      display: grid;
+      grid-template-columns: 0.9fr 1.2fr 1fr;
+      gap: 16px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfcfe;
+      min-height: 330px;
+    }
+
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+    }
+
+    .query {
+      padding: 14px;
+      border-left: 4px solid var(--blue);
+      background: #eef4ff;
+      border-radius: 6px;
+      line-height: 1.55;
+    }
+
+    .model {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 6px;
+      background: #101723;
+      color: #e9f1ff;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    .chunk {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      transition: 0.2s ease;
+    }
+
+    .chunk.active {
+      border-color: var(--blue);
+      background: #eef4ff;
+    }
+
+    .chunk.top {
+      border-color: rgba(22, 136, 95, 0.55);
+      background: #f0fbf6;
+    }
+
+    .chunk-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .score {
+      color: var(--blue);
+      white-space: nowrap;
+    }
+
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #e7ebf2;
+    }
+
+    .fill {
+      height: 100%;
+      width: 0;
+      background: var(--blue);
+      transition: width 0.35s ease;
+    }
+
+    .chunk p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .observation {
+      min-height: 230px;
+      padding: 14px;
+      border-radius: 8px;
+      background: #101723;
+      color: #e9f1ff;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    .step-note {
+      margin-top: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    @media (max-width: 900px) {
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="demo">
+    <section class="header">
+      <div>
+        <h1>RAG 如何把“最相关知识”交给 Agent</h1>
+        <p class="hint">动画中的排序逻辑对应 v0.7/v0.8：只保留相似度最高的前两条知识片段。</p>
+      </div>
+      <button id="nextBtn">下一步</button>
+    </section>
+
+    <section class="workspace">
+      <div class="panel">
+        <h2>1. 用户问题</h2>
+        <div class="query">杭州下雨天怎么玩？我想轻松一点，不想安排太赶。</div>
+        <div class="model" id="modelBox">等待生成 query embedding...</div>
+        <p class="step-note" id="note"></p>
+      </div>
+
+      <div class="panel">
+        <h2>2. 知识片段排序</h2>
+        <div id="chunks"></div>
+      </div>
+
+      <div class="panel">
+        <h2>3. 写入 Observation</h2>
+        <div class="observation" id="observation">等待检索结果...</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const chunks = [
+      { title: "杭州雨天行程", score: 0.86, text: "雨天适合安排中国茶叶博物馆、浙江省博物馆、南宋御街和室内茶馆。" },
+      { title: "轻松型旅行节奏", score: 0.79, text: "轻松行程应控制每日 2 到 3 个主要地点，午后留出休息时间。" },
+      { title: "成都亲子路线", score: 0.34, text: "成都路线可围绕熊猫基地、宽窄巷子和锦里展开。" },
+      { title: "海边旅行装备", score: 0.22, text: "海边旅行需要关注防晒、防潮和潮汐时间。" }
+    ];
+
+    const notes = [
+      "先把用户问题编码成向量，代码中可以使用 SentenceTransformer(\"BAAI/bge-m3\")。",
+      "再把问题向量和每个知识片段的向量计算相似度。",
+      "排序后只取前两条，避免把低相关内容塞进 Prompt。",
+      "最后把这两条知识作为 observation，让 LLM 基于它们生成回答。"
+    ];
+
+    const modelBox = document.getElementById("modelBox");
+    const chunksBox = document.getElementById("chunks");
+    const observation = document.getElementById("observation");
+    const note = document.getElementById("note");
+    let step = 0;
+
+    function renderChunks() {
+      chunksBox.innerHTML = chunks.map((chunk, index) => {
+        const showScore = step >= 1;
+        const isTop = step >= 2 && index < 2;
+        return `
+          <article class="chunk ${showScore ? "active" : ""} ${isTop ? "top" : ""}">
+            <div class="chunk-title">
+              <span>${index + 1}. ${chunk.title}</span>
+              <span class="score">${showScore ? chunk.score.toFixed(2) : "--"}</span>
+            </div>
+            <div class="bar"><div class="fill" style="width:${showScore ? chunk.score * 100 : 0}%"></div></div>
+            <p>${chunk.text}</p>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function render() {
+      note.textContent = notes[step];
+      modelBox.textContent = step === 0
+        ? "model = SentenceTransformer(\"BAAI/bge-m3\")\nquery_embedding = model.encode(user_input)"
+        : "query_embedding 已生成\n正在与知识库 embedding 计算相似度";
+
+      renderChunks();
+
+      if (step < 3) {
+        observation.textContent = "等待检索结果...";
+      } else {
+        observation.textContent = "Observation:\n1. 杭州雨天适合安排博物馆、茶馆、南宋御街等室内或半室内活动。\n2. 轻松型行程每天控制 2 到 3 个主要地点，并预留休息时间。";
+      }
+    }
+
+    document.getElementById("nextBtn").addEventListener("click", () => {
+      step = (step + 1) % 4;
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

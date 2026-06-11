@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Think-Act-Observe 工作循环演示</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --ink: #18202f;
+      --muted: #657084;
+      --line: #d9e0ea;
+      --blue: #2864d8;
+      --green: #16885f;
+      --amber: #b36a00;
+      --red: #c44949;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+
+    .demo {
+      min-height: 100vh;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+      gap: 18px;
+    }
+
+    .board,
+    .side {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(24, 32, 47, 0.06);
+    }
+
+    .board {
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.25;
+    }
+
+    .hint {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 9px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button.primary {
+      color: #fff;
+      border-color: var(--blue);
+      background: var(--blue);
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(150px, 1fr));
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .node {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      min-height: 118px;
+      background: #fbfcfe;
+      transition: 0.2s ease;
+    }
+
+    .node.active {
+      border-color: var(--blue);
+      background: #eef4ff;
+      box-shadow: 0 0 0 3px rgba(40, 100, 216, 0.12);
+      transform: translateY(-2px);
+    }
+
+    .node.done {
+      border-color: rgba(22, 136, 95, 0.45);
+      background: #f0fbf6;
+    }
+
+    .index {
+      display: inline-grid;
+      place-items: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #e6ebf3;
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .node.active .index {
+      color: #fff;
+      background: var(--blue);
+    }
+
+    .node h2 {
+      margin: 12px 0 6px;
+      font-size: 18px;
+    }
+
+    .node p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .side {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .phase {
+      padding: 14px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fbfcfe;
+    }
+
+    .phase-label {
+      color: var(--blue);
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .phase-title {
+      margin: 8px 0 6px;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .phase-body {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .terminal {
+      min-height: 190px;
+      margin: 0;
+      padding: 14px;
+      overflow: auto;
+      border-radius: 8px;
+      background: #101723;
+      color: #e9f1ff;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    .legend {
+      display: grid;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .legend span {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--blue);
+    }
+
+    .dot.green {
+      background: var(--green);
+    }
+
+    .dot.amber {
+      background: var(--amber);
+    }
+
+    @media (max-width: 820px) {
+      .demo {
+        grid-template-columns: 1fr;
+        padding: 14px;
+      }
+
+      .flow {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="demo">
+    <section class="board">
+      <div class="topbar">
+        <div>
+          <h1>Think-Act-Observe 如何让 Agent 分步工作</h1>
+          <p class="hint">点击“下一步”观察一次完整的工具调用循环。</p>
+        </div>
+        <div class="controls">
+          <button id="resetBtn">重置</button>
+          <button id="nextBtn" class="primary">下一步</button>
+        </div>
+      </div>
+
+      <div class="flow" id="flow"></div>
+    </section>
+
+    <aside class="side">
+      <div class="phase">
+        <div class="phase-label" id="phaseLabel">STEP 1</div>
+        <div class="phase-title" id="phaseTitle"></div>
+        <p class="phase-body" id="phaseBody"></p>
+      </div>
+      <pre class="terminal" id="terminal"></pre>
+      <div class="legend">
+        <span><i class="dot"></i> 当前正在执行的阶段</span>
+        <span><i class="dot green"></i> 已经完成并进入上下文的阶段</span>
+        <span><i class="dot amber"></i> Tool 的返回会成为下一轮 Think 的依据</span>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const steps = [
+      {
+        name: "User Input",
+        desc: "用户提出真实问题，例如“杭州明天适合户外玩吗？”",
+        body: "Agent 先接收用户输入，但此时还不能直接回答，因为它不知道实时天气。",
+        log: "stdout: 用户问题：杭州明天适合户外玩吗？"
+      },
+      {
+        name: "Think",
+        desc: "判断要不要调用工具，以及需要什么参数。",
+        body: "模型根据 System Prompt 和用户问题推理：这个问题需要天气信息，因此应该调用天气工具。",
+        log: "[INFO] Think: 需要查询实时天气\n[INFO] Plan: 调用 get_weather(city='杭州')"
+      },
+      {
+        name: "Act",
+        desc: "执行工具调用，把结构化参数交给函数。",
+        body: "Agent 不再把工具描述当成普通文本，而是用明确的 tool call 调用本地函数或外部 API。",
+        log: "[INFO] Act: get_weather(city='杭州')\nstderr: 工具状态日志\nstdout: 不输出最终答案"
+      },
+      {
+        name: "Observe",
+        desc: "把工具返回结果作为 observation 写回上下文。",
+        body: "工具返回的天气结果不是最终回答，而是下一轮模型思考时可以使用的新信息。",
+        log: "[INFO] Observe: 杭州，22-28℃，小雨，东北风\nmessages += role='tool'"
+      },
+      {
+        name: "Think Again",
+        desc: "结合 observation 重新组织答案。",
+        body: "模型现在既理解用户需求，也掌握工具结果，可以判断户外活动是否合适。",
+        log: "[INFO] Think: 小雨天气，建议室内为主，短时户外备选"
+      },
+      {
+        name: "Final Answer",
+        desc: "只把正式答案输出到 stdout。",
+        body: "前面的状态日志用于前端展示过程，最终回答才是用户真正需要看到的内容。",
+        log: "stdout: 明天杭州有小雨，建议以室内行程为主，可以安排博物馆、茶馆或西湖周边短时散步。"
+      }
+    ];
+
+    const flow = document.getElementById("flow");
+    const phaseLabel = document.getElementById("phaseLabel");
+    const phaseTitle = document.getElementById("phaseTitle");
+    const phaseBody = document.getElementById("phaseBody");
+    const terminal = document.getElementById("terminal");
+    let current = 0;
+
+    function renderFlow() {
+      flow.innerHTML = steps.map((step, index) => `
+        <article class="node ${index === current ? "active" : ""} ${index < current ? "done" : ""}">
+          <span class="index">${index + 1}</span>
+          <h2>${step.name}</h2>
+          <p>${step.desc}</p>
+        </article>
+      `).join("");
+    }
+
+    function renderSide() {
+      const step = steps[current];
+      phaseLabel.textContent = `STEP ${current + 1}`;
+      phaseTitle.textContent = step.name;
+      phaseBody.textContent = step.body;
+      terminal.textContent = step.log;
+    }
+
+    function render() {
+      renderFlow();
+      renderSide();
+    }
+
+    document.getElementById("nextBtn").addEventListener("click", () => {
+      current = (current + 1) % steps.length;
+      render();
+    });
+
+    document.getElementById("resetBtn").addEventListener("click", () => {
+      current = 0;
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

@@ -1,7 +1,9 @@
-import json
-from dataclasses import dataclass, field
-from openai import OpenAI
+from __future__ import annotations
 
+import json
+import logging
+import sys
+from dataclasses import dataclass, field
 
 SYSTEM_PROMPT = """
 你是 TravelPlanAgent，一个友好、可靠、适合初学者理解的旅行规划助手。
@@ -22,23 +24,25 @@ LOCAL_TRAVEL_TIPS = {
     "广州": "本地小贴士：广州早茶适合上午体验，老城区适合步行探索。夏季闷热且阵雨多，行程最好留室内备选。",
 }
 
-class LLMConfig:
-    """
-    集中管理模型调用参数，对应课程中的 API 调用基础。
-    """
+logger = logging.getLogger("travel_agent")
+logger.setLevel(logging.INFO)
+logger.handlers.clear()
+handler = logging.StreamHandler(sys.stderr)
+handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+logger.addHandler(handler)
+logger.propagate = False
 
+
+@dataclass
+class LLMConfig:
     base_url: str = "https://chat.ecnu.edu.cn/open/api/v1"
-    api_key: str = ""
+    api_key: str = "sk-4b905783f8ab4fed9f7c1879aaf2ae58"
     model_name: str = "ecnu-max"
     temperature: float = 0.7
     timeout_seconds: int = 300
 
 
 class LLMClient:
-    """
-    统一封装 LLM 请求
-    """
-
     def __init__(self, config: LLMConfig | None = None, openai_client: object | None = None) -> None:
         self.config = config or LLMConfig()
         self.openai_client = openai_client
@@ -48,8 +52,7 @@ class LLMClient:
             return "请先把 LLMConfig 里的 api_key 替换成真实密钥。"
 
         try:
-            openai_client = self._get_openai_client()
-            completion = openai_client.chat.completions.create(
+            completion = self._get_openai_client().chat.completions.create(
                 model=self.config.model_name,
                 messages=messages,
                 temperature=self.config.temperature if temperature is None else temperature,
@@ -61,21 +64,19 @@ class LLMClient:
             return f"调用模型时出现错误：{error}"
 
     def _get_openai_client(self) -> object:
-        if self.openai_client is not None:
-            return self.openai_client
+        if self.openai_client is None:
+            from openai import OpenAI
 
-        self.openai_client = OpenAI(
-            api_key=self.config.api_key,
-            base_url=self.config.base_url,
-            timeout=self.config.timeout_seconds,
-        )
+            self.openai_client = OpenAI(
+                api_key=self.config.api_key,
+                base_url=self.config.base_url,
+                timeout=self.config.timeout_seconds,
+            )
         return self.openai_client
 
-class ConversationMemory:
-    """
-    保存最近几轮对话。
-    """
 
+@dataclass
+class ConversationMemory:
     max_rounds: int = 5
     messages: list[dict[str, str]] = field(default_factory=list)
 
@@ -94,11 +95,8 @@ class ConversationMemory:
         self.messages = self.messages[-self.max_rounds * 2 :]
 
 
+@dataclass
 class ToolResult:
-    """
-    工具调用结果的统一格式。
-    """
-
     tool_name: str
     tool_function: str
     tool_input: str
@@ -106,43 +104,25 @@ class ToolResult:
     content: str
 
 
-class BaseTool:
-    """
-    所有工具的统一接口。
-    """
-
-    name: str = "base_tool"
-    function_name: str = "run"
-    description: str = "基础工具"
-
-    def run(self, tool_input: str) -> ToolResult:
-        raise NotImplementedError
-
-
-class LocalTravelTipsTool(BaseTool):
-    """
-    读取代码内置的城市出行提醒和本地小贴士。
-    """
-
+class LocalTravelTipsTool:
     name = "local_function"
     function_name = "get_local_travel_tips"
     description = "读取代码内置的城市出行提醒和本地小贴士。"
 
     def run(self, city: str) -> ToolResult:
-        content = LOCAL_TRAVEL_TIPS.get(city, f"没有识别到支持城市。当前支持：{', '.join(LOCAL_TRAVEL_TIPS)}。")
+        content = LOCAL_TRAVEL_TIPS.get(
+            city,
+            f"没有识别到支持城市。当前支持：{', '.join(LOCAL_TRAVEL_TIPS)}。",
+        )
         return ToolResult(self.name, self.function_name, city, self.description, content)
 
 
 class TravelPlanAgent:
-    """
-    TravelPlanAgent v0.5 tool1：每轮只调用 local_function。
-    """
-
     def __init__(
         self,
         llm_client: LLMClient | None = None,
         memory: ConversationMemory | None = None,
-        tool: BaseTool | None = None,
+        tool: LocalTravelTipsTool | None = None,
         system_prompt: str = SYSTEM_PROMPT,
     ) -> None:
         self.llm_client = llm_client or LLMClient()
@@ -153,34 +133,29 @@ class TravelPlanAgent:
     def run(self, user_input: str) -> str:
         user_message = self.build_user_message(user_input)
         self.memory.add_user_message(user_message)
-        messages = self.memory.build_messages(self.system_prompt)
-        answer = self.llm_client.chat(messages)
+        answer = self.llm_client.chat(self.memory.build_messages(self.system_prompt))
         self.memory.add_assistant_message(answer)
         return answer
 
     def build_user_message(self, user_input: str) -> str:
         city = self.extract_city(user_input)
+        logger.info("Tool Call: %s(city='%s')", self.tool.function_name, city)
+
         result = self.tool.run(city)
-        tool_record = self.build_tool_record(result)
+        logger.info("Observe: %s", result.content)
 
-        print(f"[工具调用] {result.tool_function}(city='{result.tool_input}')")
-        print(f"[工具作用] {result.tool_action}")
-        print(f"[工具结果] {result.content}")
-
-        return (
-            f"{user_input}\n\n"
-            "本轮必须调用的 Tool 已经执行。请在回答开头说明 Tool 使用情况：\n"
-            f"{json.dumps(tool_record, ensure_ascii=False, indent=2)}"
-        )
-
-    def build_tool_record(self, result: ToolResult) -> dict[str, str]:
-        return {
+        tool_record = {
             "tool_name": result.tool_name,
             "tool_function": result.tool_function,
             "tool_input": result.tool_input,
             "tool_action": result.tool_action,
             "tool_result": result.content,
         }
+        return (
+            f"{user_input}\n\n"
+            "本轮必须调用的 Tool 已经执行。请在回答开头说明 Tool 使用情况：\n"
+            f"{json.dumps(tool_record, ensure_ascii=False, indent=2)}"
+        )
 
     def extract_city(self, text: str) -> str:
         for city in LOCAL_TRAVEL_TIPS:
@@ -191,9 +166,7 @@ class TravelPlanAgent:
 
 def main() -> None:
     print("TravelPlanAgent v0.5 tool1：只调用 local_function")
-    print("这个版本每轮都会调用 get_local_travel_tips。")
     print("输入 exit、quit 或 退出 可以结束对话。")
-
     agent = TravelPlanAgent()
 
     while True:
@@ -207,8 +180,7 @@ def main() -> None:
             print("TravelPlanAgent：下次旅行再见！")
             break
 
-        answer = agent.run(user_input)
-        print(f"TravelPlanAgent：{answer}")
+        print(f"TravelPlanAgent：{agent.run(user_input)}")
 
 
 if __name__ == "__main__":

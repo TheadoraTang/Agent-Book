@@ -1,19 +1,20 @@
-﻿import json
-import socket
-import time
+import json
+import logging
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass, field
 
 
-BASE_URL = "https://chat.ecnu.edu.cn/open/api/v1"
-API_KEY = ""
-MODEL_NAME = "ecnu-max"
-CHAT_COMPLETIONS_URL = f"{BASE_URL}/chat/completions"
-MAX_HISTORY_ROUNDS = 5
-LLM_TIMEOUT_SECONDS = 300
-SEARCH_API_URL = "https://searchfree.site/api/search"
-MAX_TOOL_ROUNDS = 3
+logger = logging.getLogger("travel_agent")
+logger.setLevel(logging.INFO)
+logger.handlers.clear()
+handler = logging.StreamHandler(sys.stderr)
+handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+logger.addHandler(handler)
+logger.propagate = False
+
 
 SYSTEM_PROMPT = """
 你是 TravelPlanAgent，一个友好、可靠、适合初学者理解的旅行规划助手。
@@ -72,266 +73,335 @@ WEATHER_CODE_MAP = {
     95: "雷暴",
 }
 
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_local_travel_tips",
-            "description": "读取代码内置的城市出行提醒，包括交通、预约、人流、节奏和避坑建议。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "city": {"type": "string", "description": "城市名，例如：北京、上海、杭州。"}
-                },
-                "required": ["city"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_weather_from_api",
-            "description": "调用天气 API 获取城市当前天气、气温、湿度、降水和风速。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "city": {"type": "string", "description": "城市名，例如：北京、上海、杭州。"}
-                },
-                "required": ["city"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "web_search_travel_guide",
-            "description": "调用搜索 API 搜索目的地旅游攻略、景点、路线和注意事项。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query_text": {
-                        "type": "string",
-                        "description": "搜索关键词，例如：北京三日游、上海亲子旅行攻略。",
-                    }
-                },
-                "required": ["query_text"],
-            },
-        },
-    },
-]
+@dataclass
+class LLMConfig:
+    base_url: str = "https://chat.ecnu.edu.cn/open/api/v1"
+    api_key: str = "sk-4b905783f8ab4fed9f7c1879aaf2ae58"
+    model_name: str = "ecnu-max"
+    temperature: float = 0.7
+    timeout_seconds: int = 300
 
+class LLMClient:
+    def __init__(self, config: LLMConfig | None = None, openai_client: object | None = None) -> None:
+        self.config = config or LLMConfig()
+        self.openai_client = openai_client
 
-def call_llm_response(messages, temperature=0.7, tools=None, tool_choice=None):
-    if API_KEY in ["", "YOUR_API_KEY"]:
-        return {"role": "assistant", "content": "请先把文件顶部的 API_KEY 替换成真实密钥。"}
+    def chat_response(
+        self,
+        messages: list[dict[str, object]],
+        temperature: float | None = None,
+        tools: list[dict[str, object]] | None = None,
+        tool_choice: str | None = None,
+    ) -> dict[str, object]:
+        if self.config.api_key in ["", "YOUR_API_KEY"]:
+            return {"role": "assistant", "content": "请先把 LLMConfig 里的 api_key 替换成真实密钥。"}
 
-    payload = {
-        "model": MODEL_NAME,
-        "messages": messages,
-        "temperature": temperature,
-    }
-    if tools:
-        payload["tools"] = tools
-    if tool_choice:
-        payload["tool_choice"] = tool_choice
-
-    request = urllib.request.Request(
-        CHAT_COMPLETIONS_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {API_KEY}",
-        },
-        method="POST",
-    )
-
-    for attempt in range(2):
         try:
-            with urllib.request.urlopen(request, timeout=LLM_TIMEOUT_SECONDS) as response:
-                result = json.loads(response.read().decode("utf-8"))
-                return result["choices"][0]["message"]
-        except urllib.error.HTTPError as error:
-            detail = error.read().decode("utf-8", errors="ignore")
-            return {"role": "assistant", "content": f"API 请求失败，状态码：{error.code}\n{detail}"}
-        except (socket.timeout, TimeoutError) as error:
-            if attempt == 0:
-                print("[模型调用超时] 等待 2 秒后重试一次...")
-                time.sleep(2)
-                continue
-            return {"role": "assistant", "content": f"调用模型超时：{error}。可以稍后重试。"}
+            completion = self._get_openai_client().chat.completions.create(
+                model=self.config.model_name,
+                messages=messages,
+                temperature=self.config.temperature if temperature is None else temperature,
+                tools=tools,
+                tool_choice=tool_choice,
+            )
+            return self.message_to_dict(completion.choices[0].message)
+        except ImportError:
+            return {"role": "assistant", "content": "当前环境缺少 openai 包，请先运行：pip install openai"}
         except Exception as error:
             return {"role": "assistant", "content": f"调用模型时出现错误：{error}"}
 
+    def chat(self, messages: list[dict[str, object]], temperature: float | None = None) -> str:
+        response = self.chat_response(messages, temperature=temperature)
+        return str(response.get("content", ""))
 
-def call_llm(messages, temperature=0.7):
-    message = call_llm_response(messages, temperature=temperature)
-    return message.get("content", "")
+    def _get_openai_client(self) -> object:
+        if self.openai_client is not None:
+            return self.openai_client
 
+        from openai import OpenAI
 
-def get_local_travel_tips(city):
-    return LOCAL_TRAVEL_TIPS.get(city, f"没有识别到支持城市。当前支持：{', '.join(LOCAL_TRAVEL_TIPS)}。")
+        self.openai_client = OpenAI(
+            api_key=self.config.api_key,
+            base_url=self.config.base_url,
+            timeout=self.config.timeout_seconds,
+        )
+        return self.openai_client
 
-
-def get_weather_from_api(city):
-    coordinates = CITY_COORDINATES.get(city)
-    if not coordinates:
-        return f"没有识别到支持城市，无法查询天气 API。当前支持：{', '.join(CITY_COORDINATES)}。"
-
-    query = urllib.parse.urlencode(
-        {
-            "latitude": coordinates["latitude"],
-            "longitude": coordinates["longitude"],
-            "current": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m",
-            "timezone": "Asia/Shanghai",
+    def message_to_dict(self, message: object) -> dict[str, object]:
+        if hasattr(message, "model_dump"):
+            return message.model_dump(exclude_none=True)
+        if isinstance(message, dict):
+            return message
+        return {
+            "role": getattr(message, "role", "assistant"),
+            "content": getattr(message, "content", ""),
+            "tool_calls": getattr(message, "tool_calls", None) or [],
         }
-    )
-    url = f"https://api.open-meteo.com/v1/forecast?{query}"
 
-    try:
-        with urllib.request.urlopen(url, timeout=20) as response:
-            data = json.loads(response.read().decode("utf-8"))
-    except Exception as error:
-        return f"天气 API 调用失败：{error}"
+@dataclass
+class ConversationMemory:
+    max_rounds: int = 5
+    messages: list[dict[str, object]] = field(default_factory=list)
 
-    current = data.get("current", {})
-    weather_code = current.get("weather_code")
-    weather_text = WEATHER_CODE_MAP.get(weather_code, f"未知天气代码 {weather_code}")
-    return (
-        f"{city} 当前天气：{weather_text}，"
-        f"气温 {current.get('temperature_2m')} 摄氏度，"
-        f"相对湿度 {current.get('relative_humidity_2m')}%，"
-        f"降水量 {current.get('precipitation')} mm，"
-        f"风速 {current.get('wind_speed_10m')} km/h。"
-        "数据来自 Open-Meteo 天气 API。"
-    )
+    def add_user_message(self, content: str) -> None:
+        self.messages.append({"role": "user", "content": content})
+        self.trim()
+
+    def add_assistant_message(self, content: str) -> None:
+        self.messages.append({"role": "assistant", "content": content})
+        self.trim()
+
+    def build_messages(self, system_prompt: str, user_input: str) -> list[dict[str, object]]:
+        return [{"role": "system", "content": system_prompt}] + self.messages + [{"role": "user", "content": user_input}]
+
+    def trim(self) -> None:
+        self.messages = self.messages[-self.max_rounds * 2 :]
 
 
-def web_search_travel_guide(query_text):
-    query = f"{query_text} 旅游攻略 景点 路线"
-    payload = {"query": query, "max_results": 3}
-    request = urllib.request.Request(
-        SEARCH_API_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "TravelPlanAgent/0.5",
+@dataclass
+class ToolResult:
+    tool_name: str
+    function_name: str
+    content: str
+    success: bool = True
+    raw_data: object = None
+
+
+class BaseTool:
+    name: str = "base_tool"
+    function_name: str = "run"
+    description: str = "基础工具"
+    parameters: dict[str, object] = {"type": "object", "properties": {}}
+
+    def to_openai_tool(self) -> dict[str, object]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.function_name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
+        }
+
+    def run(self, arguments: dict[str, object]) -> ToolResult:
+        raise NotImplementedError
+
+
+class LocalTravelTipsTool(BaseTool):
+    name = "local_function"
+    function_name = "get_local_travel_tips"
+    description = "读取代码内置的城市出行提醒，包括交通、预约、人流、节奏和避坑建议。"
+    parameters = {
+        "type": "object",
+        "properties": {"city": {"type": "string", "description": "城市名，例如：北京、上海、杭州。"}},
+        "required": ["city"],
+    }
+
+    def run(self, arguments: dict[str, object]) -> ToolResult:
+        city = str(arguments.get("city", "")).strip()
+        content = LOCAL_TRAVEL_TIPS.get(city, f"没有识别到支持城市。当前支持：{', '.join(LOCAL_TRAVEL_TIPS)}。")
+        return ToolResult(self.name, self.function_name, content, bool(city))
+
+
+class WeatherApiTool(BaseTool):
+    name = "weather_api"
+    function_name = "get_weather_from_api"
+    description = "调用天气 API 获取城市当前天气、气温、湿度、降水和风速。"
+    parameters = LocalTravelTipsTool.parameters
+
+    def run(self, arguments: dict[str, object]) -> ToolResult:
+        city = str(arguments.get("city", "")).strip()
+        coordinates = CITY_COORDINATES.get(city)
+        if not coordinates:
+            content = f"没有识别到支持城市，无法查询天气 API。当前支持：{', '.join(CITY_COORDINATES)}。"
+            return ToolResult(self.name, self.function_name, content, False)
+
+        query = urllib.parse.urlencode(
+            {
+                "latitude": coordinates["latitude"],
+                "longitude": coordinates["longitude"],
+                "current": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m",
+                "timezone": "Asia/Shanghai",
+            }
+        )
+        url = f"https://api.open-meteo.com/v1/forecast?{query}"
+
+        try:
+            with urllib.request.urlopen(url, timeout=20) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except Exception as error:
+            return ToolResult(self.name, self.function_name, f"天气 API 调用失败：{error}", False)
+
+        current = data.get("current", {})
+        weather_code = current.get("weather_code")
+        weather_text = WEATHER_CODE_MAP.get(weather_code, f"未知天气代码 {weather_code}")
+        content = (
+            f"{city} 当前天气：{weather_text}，"
+            f"气温 {current.get('temperature_2m')} 摄氏度，"
+            f"相对湿度 {current.get('relative_humidity_2m')}%，"
+            f"降水量 {current.get('precipitation')} mm，"
+            f"风速 {current.get('wind_speed_10m')} km/h。"
+            "数据来自 Open-Meteo 天气 API。"
+        )
+        return ToolResult(self.name, self.function_name, content, True, current)
+
+
+class WebSearchTool(BaseTool):
+    name = "web_search"
+    function_name = "web_search_travel_guide"
+    description = "调用搜索 API 搜索目的地旅游攻略、景点、路线和注意事项。"
+    search_api_url = "https://searchfree.site/api/search"
+    parameters = {
+        "type": "object",
+        "properties": {
+            "query_text": {"type": "string", "description": "搜索关键词，例如：北京三日游、上海亲子旅行攻略。"}
         },
-        method="POST",
-    )
+        "required": ["query_text"],
+    }
 
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            data = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", errors="ignore")
-        return f"web_search API 请求失败，状态码：{error.code}\n{detail}"
-    except Exception as error:
-        return f"web_search 调用失败：{error}"
+    def run(self, arguments: dict[str, object]) -> ToolResult:
+        query_text = str(arguments.get("query_text", "")).strip()
+        query = f"{query_text} 旅游攻略 景点 路线"
+        request = urllib.request.Request(
+            self.search_api_url,
+            data=json.dumps({"query": query, "max_results": 3}).encode("utf-8"),
+            headers={"Content-Type": "application/json", "User-Agent": "TravelPlanAgent/0.6"},
+            method="POST",
+        )
 
-    results = data.get("results", [])[:3]
-    lines = ["web_search 搜索 API：searchfree.site", f"搜索词：{query}"]
-    if data.get("answer"):
-        lines.append(f"AI 摘要：{data['answer'][:300]}")
-    lines.append("搜索结果：")
-    for index, result in enumerate(results, start=1):
-        lines.append(f"{index}. 标题：{result.get('title', '无标题')}")
-        if result.get("content"):
-            lines.append(f"   摘要：{result['content'][:160]}")
-        if result.get("url"):
-            lines.append(f"   链接：{result['url']}")
-    if not results:
-        lines.append("没有返回搜索结果。")
-    return "\n".join(lines)
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode("utf-8", errors="ignore")
+            return ToolResult(self.name, self.function_name, f"web_search API 请求失败，状态码：{error.code}\n{detail}", False)
+        except Exception as error:
+            return ToolResult(self.name, self.function_name, f"web_search 调用失败：{error}", False)
+
+        results = data.get("results", [])[:3]
+        lines = ["web_search 搜索 API：searchfree.site", f"搜索词：{query}"]
+        if data.get("answer"):
+            lines.append(f"AI 摘要：{data['answer'][:300]}")
+        lines.append("搜索结果：")
+        for index, result in enumerate(results, start=1):
+            lines.append(f"{index}. 标题：{result.get('title', '无标题')}")
+            if result.get("content"):
+                lines.append(f"   摘要：{result['content'][:160]}")
+            if result.get("url"):
+                lines.append(f"   链接：{result['url']}")
+        if not results:
+            lines.append("没有返回搜索结果。")
+        return ToolResult(self.name, self.function_name, "\n".join(lines), bool(results), results)
 
 
-def parse_tool_arguments(arguments_text):
+def parse_tool_arguments(arguments_text: str) -> dict[str, object]:
     try:
         return json.loads(arguments_text or "{}")
     except json.JSONDecodeError:
         return {}
 
 
-def execute_tool_call(tool_call):
-    function_info = tool_call.get("function", {})
-    function_name = function_info.get("name", "")
-    arguments = parse_tool_arguments(function_info.get("arguments", "{}"))
+class TravelPlanAgent:
+    def __init__(
+        self,
+        llm_client: LLMClient | None = None,
+        memory: ConversationMemory | None = None,
+        tools: list[BaseTool] | None = None,
+        system_prompt: str = SYSTEM_PROMPT,
+        max_tool_rounds: int = 3,
+    ) -> None:
+        self.llm_client = llm_client or LLMClient()
+        self.memory = memory or ConversationMemory()
+        self.tools = tools or [LocalTravelTipsTool(), WeatherApiTool(), WebSearchTool()]
+        self.tool_map = {tool.function_name: tool for tool in self.tools}
+        self.system_prompt = system_prompt
+        self.max_tool_rounds = max_tool_rounds
 
-    if function_name == "get_local_travel_tips":
-        city = arguments.get("city", "")
-        print(f"[Act] get_local_travel_tips(city='{city}')")
-        tool_result = get_local_travel_tips(city)
-    elif function_name == "get_weather_from_api":
-        city = arguments.get("city", "")
-        print(f"[Act] get_weather_from_api(city='{city}')")
-        tool_result = get_weather_from_api(city)
-    elif function_name == "web_search_travel_guide":
-        query_text = arguments.get("query_text", "")
-        print(f"[Act] web_search_travel_guide(query_text='{query_text}')")
-        tool_result = web_search_travel_guide(query_text)
-    else:
-        tool_result = f"未知工具：{function_name}"
+    def run(self, user_input: str) -> str:
+        messages = self.memory.build_messages(self.system_prompt, user_input)
 
-    print(f"[Observe] {tool_result}")
-    return tool_result
-
-
-def trim_history(conversation_history):
-    max_messages = MAX_HISTORY_ROUNDS * 2
-    return conversation_history[-max_messages:]
-
-
-def run_agent(user_input, conversation_history):
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history
-    messages.append({"role": "user", "content": user_input})
-
-    print("[Think] 向模型注册三个 Tools，让模型决定调用哪些工具...")
-    for round_index in range(1, MAX_TOOL_ROUNDS + 1):
-        response = call_llm_response(
-            messages,
-            temperature=0.2,
-            tools=TOOLS,
-            tool_choice="auto",
-        )
-
-        tool_calls = response.get("tool_calls", [])
-        if not tool_calls:
-            print("[Think] 模型没有继续调用工具。")
-            return response.get("content", "模型没有返回可用回复。")
-
-        print(f"[Think 结果] 第 {round_index} 轮请求调用 {len(tool_calls)} 个 Tool。")
-        messages.append(response)
-
-        for tool_call in tool_calls:
-            tool_result = execute_tool_call(tool_call)
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call.get("id", ""),
-                    "name": tool_call.get("function", {}).get("name", ""),
-                    "content": tool_result,
-                }
+        logger.info("Think: 向模型注册三个 Tools，让模型决定调用哪些工具...")
+        for round_index in range(1, self.max_tool_rounds + 1):
+            response = self.llm_client.chat_response(
+                messages,
+                temperature=0.2,
+                tools=[tool.to_openai_tool() for tool in self.tools],
+                tool_choice="auto",
             )
 
-    print("[Final] 工具轮次已结束，要求模型基于 Observe 结果生成自然语言总结...")
-    messages.append(
-        {
-            "role": "user",
-            "content": (
-                "请停止调用工具。请只用自然语言回答用户，必须总结已经观察到的工具结果，"
-                "并说明使用了哪些 Tools、每个 Tool 做了什么、对旅行建议有什么影响。"
-            ),
-        }
-    )
-    final_response = call_llm_response(messages, temperature=0.7, tools=None, tool_choice=None)
-    return final_response.get("content", "模型没有返回可用回复。")
+            tool_calls = response.get("tool_calls", [])
+            if not tool_calls:
+                logger.info("Think: 模型没有继续调用工具。")
+                final_answer = str(response.get("content", "模型没有返回可用回复。"))
+                self.update_memory(user_input, final_answer)
+                return final_answer
+
+            logger.info("Think: 第 %s 轮请求调用 %s 个 Tool。", round_index, len(tool_calls))
+            messages.append(response)
+            for tool_call in tool_calls:
+                result = self.execute_tool_call(tool_call)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.get("id", ""),
+                        "name": result.function_name,
+                        "content": result.content,
+                    }
+                )
+
+        logger.info("Finalizing: 工具轮次已结束，要求模型基于 Observe 结果生成自然语言总结...")
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "请停止调用工具。请只用自然语言回答用户，必须总结已经观察到的工具结果，"
+                    "并说明使用了哪些 Tools、每个 Tool 做了什么、对旅行建议有什么影响。"
+                ),
+            }
+        )
+        final_response = self.llm_client.chat_response(messages, temperature=0.7)
+        final_answer = str(final_response.get("content", "模型没有返回可用回复。"))
+        self.update_memory(user_input, final_answer)
+        return final_answer
+
+    def execute_tool_call(self, tool_call: dict[str, object]) -> ToolResult:
+        function_info = tool_call.get("function", {})
+        function_name = function_info.get("name", "") if isinstance(function_info, dict) else ""
+        arguments_text = function_info.get("arguments", "{}") if isinstance(function_info, dict) else "{}"
+        arguments = parse_tool_arguments(str(arguments_text))
+
+        tool = self.tool_map.get(function_name)
+        if not tool:
+            result = ToolResult("unknown_tool", function_name, f"未知工具：{function_name}", False)
+        else:
+            argument_text = ", ".join(f"{key}={value!r}" for key, value in arguments.items())
+            logger.info("Tool Call: %s(%s)", function_name, argument_text)
+            result = tool.run(arguments)
+
+        logger.info("Observe: %s", result.content)
+        return result
+
+    def update_memory(self, user_input: str, final_answer: str) -> None:
+        self.memory.add_user_message(user_input)
+        self.memory.add_assistant_message(final_answer)
 
 
-def main():
+def run_agent(user_input: str, conversation_history: list[dict[str, object]]) -> str:
+    memory = ConversationMemory(messages=list(conversation_history))
+    agent = TravelPlanAgent(memory=memory)
+    return agent.run(user_input)
+
+
+def trim_history(conversation_history: list[dict[str, object]]) -> list[dict[str, object]]:
+    return conversation_history[-ConversationMemory().max_rounds * 2 :]
+
+
+def main() -> None:
     print("TravelPlanAgent v0.6：Think-Act-Observe，集成三个 Tools")
     print("可用 Tools：local_function、weather_api、web_search。")
     print("输入 exit、quit 或 退出 可以结束对话。")
 
-    conversation_history = []
+    agent = TravelPlanAgent()
 
     while True:
         user_input = input("\n你：").strip()
@@ -339,12 +409,8 @@ def main():
             print("TravelPlanAgent：下次旅行再见！")
             break
 
-        final_answer = run_agent(user_input, conversation_history)
+        final_answer = agent.run(user_input)
         print(f"TravelPlanAgent：{final_answer}")
-
-        conversation_history.append({"role": "user", "content": user_input})
-        conversation_history.append({"role": "assistant", "content": final_answer})
-        conversation_history = trim_history(conversation_history)
 
 
 if __name__ == "__main__":
