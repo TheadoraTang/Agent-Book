@@ -100,7 +100,7 @@ TRAVEL_KNOWLEDGE = """
 @dataclass
 class LLMConfig:
     base_url: str = "https://chat.ecnu.edu.cn/open/api/v1"
-    api_key: str = "sk-4b905783f8ab4fed9f7c1879aaf2ae58"
+    api_key: str = ""
     model_name: str = "ecnu-plus"
     temperature: float = 0.7
     timeout_seconds: int = 300

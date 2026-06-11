@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="840" viewBox="0 0 1400 840" role="img" aria-labelledby="title desc">
+  <title id="title">TravelPlanAgent v0.8 主 Agent 编排结构</title>
+  <desc id="desc">展示 MainAgent 调度多个 SubAgent，并将结果汇总为 Observation。</desc>
+  <defs>
+    <marker id="arrow-purple" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#7a4ed8"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#16885f"/>
+    </marker>
+    <style>
+      .bg{fill:#f6f8fb}.title{font:700 36px Arial,"Microsoft YaHei",sans-serif;fill:#1d2636}
+      .sub{font:22px Arial,"Microsoft YaHei",sans-serif;fill:#657084}
+      .h{font:700 24px Arial,"Microsoft YaHei",sans-serif}.body{font:20px Arial,"Microsoft YaHei",sans-serif;fill:#1d2636}
+      .obs{font:20px Arial,"Microsoft YaHei",sans-serif;fill:#16885f}
+    </style>
+  </defs>
+  <rect class="bg" width="1400" height="840"/>
+  <text class="title" x="54" y="70">TravelPlanAgent v0.8：主 Agent 编排结构</text>
+  <text class="sub" x="56" y="112">MainAgent 不亲自做所有事，而是拆解任务、调度子 Agent、观察结果并汇总回答。</text>
+
+  <rect x="500" y="150" width="400" height="125" rx="12" fill="#eef4ff" stroke="#2864d8" stroke-width="4"/>
+  <text class="h" x="636" y="198" fill="#2864d8">MainAgent</text>
+  <text class="body" x="587" y="238">任务拆解 · 调度 · 汇总</text>
+
+  <g>
+    <rect x="80" y="380" width="230" height="140" rx="10" fill="#ffffff" stroke="#7a4ed8" stroke-width="3"/>
+    <text class="h" x="122" y="432" fill="#1d2636">WeatherAgent</text>
+    <text class="body" x="145" y="475">天气约束</text>
+  </g>
+  <g>
+    <rect x="350" y="380" width="230" height="140" rx="10" fill="#ffffff" stroke="#7a4ed8" stroke-width="3"/>
+    <text class="h" x="412" y="432" fill="#1d2636">RAGAgent</text>
+    <text class="body" x="417" y="475">知识 Top 2</text>
+  </g>
+  <g>
+    <rect x="620" y="380" width="230" height="140" rx="10" fill="#ffffff" stroke="#7a4ed8" stroke-width="3"/>
+    <text class="h" x="660" y="432" fill="#1d2636">WebSearchAgent</text>
+    <text class="body" x="687" y="475">公开信息</text>
+  </g>
+  <g>
+    <rect x="890" y="380" width="230" height="140" rx="10" fill="#ffffff" stroke="#7a4ed8" stroke-width="3"/>
+    <text class="h" x="932" y="432" fill="#1d2636">LocalTipsAgent</text>
+    <text class="body" x="957" y="475">本地提醒</text>
+  </g>
+  <g>
+    <rect x="1160" y="380" width="190" height="140" rx="10" fill="#ffffff" stroke="#7a4ed8" stroke-width="3"/>
+    <text class="h" x="1192" y="432" fill="#1d2636">ItineraryAgent</text>
+    <text class="body" x="1215" y="475">行程草案</text>
+  </g>
+
+  <path d="M700 275 C610 330 350 335 195 380" fill="none" stroke="#7a4ed8" stroke-width="4" marker-end="url(#arrow-purple)"/>
+  <path d="M700 275 C650 330 540 340 465 380" fill="none" stroke="#7a4ed8" stroke-width="4" marker-end="url(#arrow-purple)"/>
+  <path d="M700 275 C710 330 725 340 735 380" fill="none" stroke="#7a4ed8" stroke-width="4" marker-end="url(#arrow-purple)"/>
+  <path d="M700 275 C760 330 910 340 1005 380" fill="none" stroke="#7a4ed8" stroke-width="4" marker-end="url(#arrow-purple)"/>
+  <path d="M700 275 C820 330 1120 335 1255 380" fill="none" stroke="#7a4ed8" stroke-width="4" marker-end="url(#arrow-purple)"/>
+
+  <rect x="180" y="650" width="1040" height="110" rx="12" fill="#f0fbf6" stroke="#16885f" stroke-width="3"/>
+  <text class="obs" x="315" y="698">Observation 汇总：天气结果 + 检索知识 + 搜索结果 + 本地提醒 + 行程草案</text>
+  <text class="obs" x="410" y="735">最终由 MainAgent 生成面向用户的旅行计划</text>
+
+  <path d="M195 520 C260 590 450 625 700 650" fill="none" stroke="#16885f" stroke-width="3" marker-end="url(#arrow-green)"/>
+  <path d="M465 520 C510 590 590 625 700 650" fill="none" stroke="#16885f" stroke-width="3" marker-end="url(#arrow-green)"/>
+  <path d="M735 520 C728 590 715 625 700 650" fill="none" stroke="#16885f" stroke-width="3" marker-end="url(#arrow-green)"/>
+  <path d="M1005 520 C930 590 810 625 700 650" fill="none" stroke="#16885f" stroke-width="3" marker-end="url(#arrow-green)"/>
+  <path d="M1255 520 C1100 590 900 625 700 650" fill="none" stroke="#16885f" stroke-width="3" marker-end="url(#arrow-green)"/>
+</svg>

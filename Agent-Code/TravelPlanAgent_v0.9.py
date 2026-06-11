@@ -1,0 +1,628 @@
+import json
+import os
+import urllib.error
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass, field
+
+from pydantic import BaseModel, Field
+
+try:
+    from pydantic_ai import Agent, PromptedOutput, RunContext
+    from pydantic_ai.models.openai import OpenAIChatModel
+    from pydantic_ai.providers.openai import OpenAIProvider
+except ImportError:
+    Agent = None
+    RunContext = None
+    OpenAIChatModel = None
+    OpenAIProvider = None
+    PromptedOutput = None
+
+
+LOCAL_TRAVEL_TIPS = {
+    "上海": "上海城市交通方便，地铁适合串联人民广场、南京东路、外滩、陆家嘴。外滩夜景人流较多，建议错峰前往。",
+    "北京": "北京景点预约要求较多，故宫、国家博物馆等建议提前预约。城市尺度大，跨区游玩要给交通留足时间。",
+    "杭州": "杭州西湖适合步行和骑行，但节假日湖滨、断桥一带人流密集。灵隐寺适合安排在上午。",
+    "成都": "成都适合慢节奏旅行。熊猫基地建议上午早点去，宽窄巷子、锦里更适合体验氛围而不是安排过满。",
+    "广州": "广州早茶适合上午体验，老城区适合步行探索。夏季闷热且阵雨多，行程最好留室内备选。",
+}
+
+CITY_COORDINATES = {
+    "上海": {"latitude": 31.2304, "longitude": 121.4737},
+    "北京": {"latitude": 39.9042, "longitude": 116.4074},
+    "杭州": {"latitude": 30.2741, "longitude": 120.1551},
+    "成都": {"latitude": 30.5728, "longitude": 104.0668},
+    "广州": {"latitude": 23.1291, "longitude": 113.2644},
+}
+
+WEATHER_CODE_MAP = {
+    0: "晴",
+    1: "大致晴朗",
+    2: "局部多云",
+    3: "阴",
+    45: "雾",
+    48: "雾凇",
+    51: "小毛毛雨",
+    53: "中等毛毛雨",
+    55: "强毛毛雨",
+    61: "小雨",
+    63: "中雨",
+    65: "大雨",
+    71: "小雪",
+    73: "中雪",
+    75: "大雪",
+    80: "小阵雨",
+    81: "中等阵雨",
+    82: "强阵雨",
+    95: "雷暴",
+}
+
+TRAVEL_KNOWLEDGE = """
+# 上海城市旅行
+上海适合第一次到访的经典路线是人民广场、南京东路、外滩、陆家嘴。白天可以看城市建筑和博物馆，晚上适合去外滩或陆家嘴看夜景。喜欢城市文化的游客可以安排武康路、思南路、衡山路、上海博物馆和上海当代艺术博物馆。亲子旅行可以考虑上海科技馆、上海自然博物馆和迪士尼。上海市内公共交通发达，地铁比打车更稳定。
+
+# 北京历史文化旅行
+北京适合历史文化主题旅行。经典路线包括天安门、故宫、景山公园、北海公园、什刹海和南锣鼓巷。故宫、国家博物馆等热门景点通常需要提前预约。长城距离市区较远，建议单独安排一天。北京城市尺度大，跨区移动耗时较长，行程不宜过密。
+
+# 杭州西湖与茶文化
+杭州适合慢节奏旅行。西湖可以安排断桥、白堤、苏堤、雷峰塔、曲院风荷和湖滨步行区。灵隐寺适合上午前往。喜欢茶文化可以去龙井村、中国茶叶博物馆和满觉陇。雨天可以安排南宋德寿宫遗址博物馆、浙江省博物馆、河坊街和室内茶馆。
+
+# 成都慢旅行与美食
+成都适合慢旅行和美食体验。常见路线包括大熊猫繁育研究基地、人民公园、宽窄巷子、武侯祠、锦里和太古里。熊猫基地建议上午早点去。美食可以安排火锅、串串、担担面、钟水饺和蛋烘糕。成都行程要留出喝茶、散步和休息的时间。
+
+# 广州美食与城市文化
+广州适合美食和城市文化旅行。常见路线包括陈家祠、沙面、永庆坊、北京路、珠江夜游和广东省博物馆。早茶适合安排在上午。夏季广州闷热且可能阵雨，行程应准备室内备选。广州地铁便利，但老城区步行体验也很好。
+
+# 通用旅行规划原则
+旅行规划时，每天不要安排过多景点。城市初访建议每天 2 到 4 个主要点位，并留出交通、排队、用餐和休息时间。亲子、老人同行时要降低步行强度。雨天优先安排博物馆、展览、商场、茶馆和餐饮体验。预算有限时，应优先选择公共交通和集中区域游玩。
+"""
+
+AVAILABLE_SUB_AGENTS = [
+    "LocalTipsAgent",
+    "WeatherAgent",
+    "RAGAgent",
+    "WebSearchAgent",
+    "ItineraryAgent",
+]
+
+
+class SubTask(BaseModel):
+    agent: str = Field(description="要调用的副 Agent 名称")
+    task: str = Field(description="子任务描述")
+    city: str = Field(default="", description="目的地城市；没有识别到则为空字符串")
+    query: str = Field(default="", description="给副 Agent 的查询内容")
+
+
+class PlanOutput(BaseModel):
+    should_use_sub_agents: bool = Field(description="是否需要进入 Multi-Agent 执行流程")
+    reason: str = Field(description="规划理由")
+    tasks: list[SubTask] = Field(default_factory=list, description="需要执行的子任务")
+
+
+class SubAgentOutput(BaseModel):
+    agent_name: str = Field(description="副 Agent 名称")
+    role: str = Field(description="副 Agent 职责")
+    success: bool = Field(description="子任务是否成功")
+    observation: str = Field(description="可交给主 Agent 观察的结果")
+    sources: list[str] = Field(default_factory=list, description="该副 Agent 使用的信息来源")
+
+
+class ObservationDecision(BaseModel):
+    enough_information: bool = Field(description="已有观察结果是否足够回答用户")
+    reason: str = Field(description="观察判断理由")
+    next_tasks: list[SubTask] = Field(default_factory=list, description="如信息不足，需要补充执行的子任务")
+
+
+class DailyPlan(BaseModel):
+    day: str = Field(description="第几天，例如 Day 1")
+    theme: str = Field(description="当天主题，例如 城市初访、雨天室内、亲子慢游")
+    morning: str = Field(description="上午安排")
+    afternoon: str = Field(description="下午安排")
+    evening: str = Field(description="晚上安排")
+    notes: list[str] = Field(default_factory=list, description="当天提醒")
+
+
+class TravelPlanOutput(BaseModel):
+    intent: str = Field(description="用户意图分类，例如 weather_only、tips_only、travel_plan")
+    destination: str = Field(description="目的地城市；如果没有识别到则为空字符串")
+    summary: str = Field(description="给用户的简短结论")
+    daily_plan: list[DailyPlan] = Field(default_factory=list, description="按天组织的行程计划")
+    weather_advice: str = Field(default="", description="天气相关建议")
+    local_tips: list[str] = Field(default_factory=list, description="本地出行提醒")
+    sources: list[str] = Field(default_factory=list, description="使用过的信息来源")
+    follow_up_questions: list[str] = Field(default_factory=list, description="仍需向用户追问的问题")
+
+    def to_markdown(self) -> str:
+        lines = [f"## {self.summary}", ""]
+        if self.destination:
+            lines.append(f"目的地：{self.destination}")
+            lines.append("")
+        if self.weather_advice:
+            lines.append(f"天气建议：{self.weather_advice}")
+            lines.append("")
+        if self.daily_plan:
+            lines.append("### 行程安排")
+            for day in self.daily_plan:
+                lines.extend(
+                    [
+                        f"- {day.day}｜{day.theme}",
+                        f"  - 上午：{day.morning}",
+                        f"  - 下午：{day.afternoon}",
+                        f"  - 晚上：{day.evening}",
+                    ]
+                )
+                for note in day.notes:
+                    lines.append(f"  - 提醒：{note}")
+            lines.append("")
+        if self.local_tips:
+            lines.append("### 本地提醒")
+            lines.extend(f"- {tip}" for tip in self.local_tips)
+            lines.append("")
+        if self.follow_up_questions:
+            lines.append("### 还需要确认")
+            lines.extend(f"- {question}" for question in self.follow_up_questions)
+            lines.append("")
+        if self.sources:
+            lines.append("### 信息来源")
+            lines.extend(f"- {source}" for source in self.sources)
+        return "\n".join(lines).strip()
+
+
+@dataclass
+class LLMConfig:
+    base_url: str = field(default_factory=lambda: os.getenv("TRAVEL_AGENT_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"))
+    api_key: str = field(default_factory=lambda: os.getenv("TRAVEL_AGENT_API_KEY", ""))
+    model_name: str = field(default_factory=lambda: os.getenv("TRAVEL_AGENT_MODEL", "deepseek-v4-flash"))
+
+
+@dataclass
+class TravelKnowledgeRetriever:
+    knowledge_text: str = TRAVEL_KNOWLEDGE
+
+    def retrieve(self, query: str, top_k: int = 2) -> str:
+        chunks = [chunk.strip() for chunk in self.knowledge_text.strip().split("\n\n") if chunk.strip()]
+        scored_chunks = []
+        for chunk in chunks:
+            score = sum(1 for char in set(query) if char in chunk)
+            scored_chunks.append((score, chunk))
+        scored_chunks.sort(reverse=True, key=lambda item: item[0])
+        selected = [chunk for score, chunk in scored_chunks[:top_k] if score > 0]
+        if not selected:
+            return "没有检索到相关旅行知识。"
+        return "\n\n".join(selected)
+
+
+@dataclass
+class TravelDeps:
+    local_tips: dict[str, str] = field(default_factory=lambda: dict(LOCAL_TRAVEL_TIPS))
+    coordinates: dict[str, dict[str, float]] = field(default_factory=lambda: dict(CITY_COORDINATES))
+    weather_code_map: dict[int, str] = field(default_factory=lambda: dict(WEATHER_CODE_MAP))
+    retriever: TravelKnowledgeRetriever = field(default_factory=TravelKnowledgeRetriever)
+    search_api_url: str = "https://searchfree.site/api/search"
+
+
+def extract_city(text: str) -> str:
+    for city in LOCAL_TRAVEL_TIPS:
+        if city in text:
+            return city
+    return ""
+
+
+def build_model(config: LLMConfig):
+    if OpenAIChatModel is None or OpenAIProvider is None:
+        raise RuntimeError("当前环境缺少 pydantic-ai，请先运行：pip install pydantic-ai")
+    if not config.api_key:
+        raise RuntimeError("请先设置环境变量 TRAVEL_AGENT_API_KEY，再运行 v0.9。")
+    return OpenAIChatModel(
+        config.model_name,
+        provider=OpenAIProvider(base_url=config.base_url, api_key=config.api_key),
+    )
+
+
+def ensure_pydantic_ai_available() -> None:
+    if Agent is None or PromptedOutput is None or RunContext is None:
+        raise RuntimeError("当前环境缺少 pydantic-ai，请先运行：pip install pydantic-ai")
+
+
+def build_planner_agent(model):
+    return Agent(
+        model,
+        output_type=PromptedOutput(PlanOutput),
+        instructions=f"""
+你是 TravelPlanAgent 的 Think 阶段规划 Agent。
+你负责判断用户请求是否需要进入 Multi-Agent 执行流程，并把任务拆给合适的副 Agent。
+
+可用副 Agent：
+- LocalTipsAgent：读取本地出行提醒，适合交通、预约、人流、避坑。
+- WeatherAgent：调用天气 API，适合天气、气温、下雨、穿衣。
+- RAGAgent：检索本地旅行知识库，适合景点、路线、雨天安排、预算、亲子、老人等规划知识。
+- WebSearchAgent：调用搜索 API，适合公开网页攻略、最新信息、门票、开放情况。
+- ItineraryAgent：根据已有观察结果生成行程草案，只有当用户明确要求攻略、路线、几日游或完整计划时才使用。
+
+只选择必要副 Agent，不要为了展示能力默认调用所有副 Agent。
+副 Agent 名称必须来自：{", ".join(AVAILABLE_SUB_AGENTS)}。
+""",
+    )
+
+
+def build_observer_agent(model):
+    return Agent(
+        model,
+        output_type=PromptedOutput(ObservationDecision),
+        instructions=f"""
+你是 TravelPlanAgent 的 Observe 阶段观察 Agent。
+你负责检查已有副 Agent 观察结果是否足够回答用户。
+
+规则：
+1. 只在确实缺少关键信息时补充 next_tasks。
+2. 不要重复已经执行过的子任务。
+3. 如果已有信息足够，enough_information 为 true，next_tasks 为空列表。
+4. 副 Agent 名称必须来自：{", ".join(AVAILABLE_SUB_AGENTS)}。
+""",
+    )
+
+
+def build_final_agent(model):
+    return Agent(
+        model,
+        output_type=PromptedOutput(TravelPlanOutput),
+        instructions="""
+你是 TravelPlanAgent 的最终回答 Agent。
+你会接收用户需求、计划任务和多个副 Agent 的观察结果，并生成面向用户的最终答案。
+
+要求：
+1. 不要暴露内部的 Think、Act、Observe、主 Agent、副 Agent 等实现细节。
+2. 如果用户只是问天气，只回答天气结论和简短提醒，不要生成完整行程。
+3. 只有用户明确要求攻略、路线、几日游、完整计划时，才输出 daily_plan。
+4. 天气、搜索和知识库信息要自然说明来源。
+5. 最终结果必须符合 TravelPlanOutput。
+""",
+    )
+
+
+def build_local_tips_agent(model):
+    agent = Agent(
+        model,
+        deps_type=TravelDeps,
+        output_type=PromptedOutput(SubAgentOutput),
+        instructions="""
+你是 LocalTipsAgent，职责是读取本地旅行提醒。
+你只能围绕交通、预约、人流、城市节奏和避坑提醒回答。
+必须调用 get_local_tips 工具获取依据。
+""",
+    )
+
+    @agent.tool
+    def get_local_tips(ctx: RunContext[TravelDeps], city: str) -> str:
+        """查询本地旅行提醒，适合交通、预约、人流和避坑建议。"""
+        city = city.strip()
+        if not city:
+            return "没有提供城市名，无法查询本地提醒。"
+        return ctx.deps.local_tips.get(city, f"暂不支持 {city}。当前支持：{', '.join(ctx.deps.local_tips)}。")
+
+    return agent
+
+
+def build_weather_agent(model):
+    agent = Agent(
+        model,
+        deps_type=TravelDeps,
+        output_type=PromptedOutput(SubAgentOutput),
+        instructions="""
+你是 WeatherAgent，职责是查询天气并给出天气相关出行观察。
+必须调用 get_weather 工具，不要凭模型已有知识猜天气。
+""",
+    )
+
+    @agent.tool
+    def get_weather(ctx: RunContext[TravelDeps], city: str) -> str:
+        """调用 Open-Meteo 天气 API，查询目的地当前天气。"""
+        city = city.strip()
+        coordinates = ctx.deps.coordinates.get(city)
+        if not coordinates:
+            return f"暂不支持 {city} 的天气查询。当前支持：{', '.join(ctx.deps.coordinates)}。"
+
+        query = urllib.parse.urlencode(
+            {
+                "latitude": coordinates["latitude"],
+                "longitude": coordinates["longitude"],
+                "current": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m",
+                "timezone": "Asia/Shanghai",
+            }
+        )
+        try:
+            with urllib.request.urlopen(f"https://api.open-meteo.com/v1/forecast?{query}", timeout=20) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except Exception as error:
+            return f"天气 API 调用失败：{error}"
+
+        current = data.get("current", {})
+        weather_text = ctx.deps.weather_code_map.get(
+            current.get("weather_code"),
+            f"未知天气代码 {current.get('weather_code')}",
+        )
+        return (
+            f"{city} 当前天气：{weather_text}，"
+            f"气温 {current.get('temperature_2m')} 摄氏度，"
+            f"相对湿度 {current.get('relative_humidity_2m')}%，"
+            f"降水量 {current.get('precipitation')} mm，"
+            f"风速 {current.get('wind_speed_10m')} km/h。"
+            "数据来自 Open-Meteo 天气 API。"
+        )
+
+    return agent
+
+
+def build_rag_agent(model):
+    agent = Agent(
+        model,
+        deps_type=TravelDeps,
+        output_type=PromptedOutput(SubAgentOutput),
+        instructions="""
+你是 RAGAgent，职责是从本地旅行知识库中检索规划依据。
+必须调用 search_travel_knowledge 工具，并把检索到的内容整理成 observation。
+""",
+    )
+
+    @agent.tool
+    def search_travel_knowledge(ctx: RunContext[TravelDeps], query: str) -> str:
+        """检索本地旅行知识库，适合景点、路线、雨天安排和通用规划原则。"""
+        return ctx.deps.retriever.retrieve(query, top_k=2)
+
+    return agent
+
+
+def build_web_search_agent(model):
+    agent = Agent(
+        model,
+        deps_type=TravelDeps,
+        output_type=PromptedOutput(SubAgentOutput),
+        instructions="""
+你是 WebSearchAgent，职责是搜索公开网页旅行攻略或最新信息。
+必须调用 web_search_travel_guide 工具，并保留来源链接。
+""",
+    )
+
+    @agent.tool
+    def web_search_travel_guide(ctx: RunContext[TravelDeps], query: str) -> str:
+        """调用搜索 API 获取公开网页旅行攻略，适合需要新资料、门票、开放情况或网页来源的问题。"""
+        request = urllib.request.Request(
+            ctx.deps.search_api_url,
+            data=json.dumps({"query": f"{query} 旅游攻略 景点 路线", "max_results": 3}).encode("utf-8"),
+            headers={"Content-Type": "application/json", "User-Agent": "TravelPlanAgent/0.9"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode("utf-8", errors="ignore")
+            return f"web_search API 请求失败，状态码：{error.code}\n{detail}"
+        except Exception as error:
+            return f"web_search 调用失败：{error}"
+
+        results = data.get("results", [])[:3]
+        lines = [f"搜索词：{query} 旅游攻略 景点 路线"]
+        if data.get("answer"):
+            lines.append(f"AI 摘要：{data['answer'][:300]}")
+        for index, result in enumerate(results, start=1):
+            lines.append(f"{index}. 标题：{result.get('title', '无标题')}")
+            if result.get("content"):
+                lines.append(f"   摘要：{result['content'][:160]}")
+            if result.get("url"):
+                lines.append(f"   链接：{result['url']}")
+        if not results:
+            lines.append("没有返回搜索结果。")
+        return "\n".join(lines)
+
+    return agent
+
+
+def build_itinerary_agent(model):
+    return Agent(
+        model,
+        output_type=PromptedOutput(SubAgentOutput),
+        instructions="""
+你是 ItineraryAgent，职责是根据其他副 Agent 的观察结果生成行程草案。
+你不直接查询天气或网页，只综合用户需求和已有 observations。
+输出要包含可供最终回答 Agent 使用的行程依据和草案。
+""",
+    )
+
+
+class TravelPlanAgent:
+    def __init__(
+        self,
+        config: LLMConfig | None = None,
+        deps: TravelDeps | None = None,
+    ) -> None:
+        ensure_pydantic_ai_available()
+        self.config = config or LLMConfig()
+        self.deps = deps or TravelDeps()
+        self.model = build_model(self.config)
+        self.planner_agent = build_planner_agent(self.model)
+        self.observer_agent = build_observer_agent(self.model)
+        self.final_agent = build_final_agent(self.model)
+        self.sub_agents = {
+            "LocalTipsAgent": build_local_tips_agent(self.model),
+            "WeatherAgent": build_weather_agent(self.model),
+            "RAGAgent": build_rag_agent(self.model),
+            "WebSearchAgent": build_web_search_agent(self.model),
+            "ItineraryAgent": build_itinerary_agent(self.model),
+        }
+        self.message_history = []
+
+    def run(self, user_input: str) -> TravelPlanOutput:
+        plan = self.think(user_input)
+        if not plan.should_use_sub_agents or not plan.tasks:
+            return self.direct_answer(user_input, plan)
+
+        observations = self.act(plan.tasks, user_input, [])
+        decision = self.observe(user_input, plan.tasks, observations)
+
+        if not decision.enough_information and decision.next_tasks:
+            more_observations = self.act(decision.next_tasks, user_input, observations)
+            plan.tasks.extend(decision.next_tasks)
+            observations.extend(more_observations)
+
+        return self.final_answer(user_input, plan, observations, decision)
+
+    def think(self, user_input: str) -> PlanOutput:
+        city = extract_city(user_input)
+        prompt = f"""
+用户需求：{user_input}
+识别到的城市：{city}
+
+请判断是否需要调用副 Agent，并拆解必要子任务。
+如果只是问候或与旅行无关，should_use_sub_agents=false，tasks=[]。
+"""
+        result = self.planner_agent.run_sync(prompt, message_history=self.message_history)
+        return result.output
+
+    def act(
+        self,
+        tasks: list[SubTask],
+        user_input: str,
+        previous_observations: list[SubAgentOutput],
+    ) -> list[SubAgentOutput]:
+        observations: list[SubAgentOutput] = []
+        for task in tasks:
+            sub_agent = self.sub_agents.get(task.agent)
+            if sub_agent is None:
+                observations.append(
+                    SubAgentOutput(
+                        agent_name=task.agent or "UnknownAgent",
+                        role="未注册副 Agent",
+                        success=False,
+                        observation=f"没有找到对应副 Agent：{task.agent}",
+                        sources=[],
+                    )
+                )
+                continue
+
+            prompt = self.build_sub_agent_prompt(task, user_input, previous_observations + observations)
+            if task.agent in {"LocalTipsAgent", "WeatherAgent", "RAGAgent", "WebSearchAgent"}:
+                result = sub_agent.run_sync(prompt, deps=self.deps)
+            else:
+                result = sub_agent.run_sync(prompt)
+            observations.append(result.output)
+        return observations
+
+    def observe(
+        self,
+        user_input: str,
+        tasks: list[SubTask],
+        observations: list[SubAgentOutput],
+    ) -> ObservationDecision:
+        prompt = f"""
+用户需求：
+{user_input}
+
+已执行子任务：
+{json.dumps([task.model_dump() for task in tasks], ensure_ascii=False, indent=2)}
+
+已有观察结果：
+{json.dumps([item.model_dump() for item in observations], ensure_ascii=False, indent=2)}
+
+请判断是否还缺少必要信息。
+"""
+        return self.observer_agent.run_sync(prompt).output
+
+    def final_answer(
+        self,
+        user_input: str,
+        plan: PlanOutput,
+        observations: list[SubAgentOutput],
+        decision: ObservationDecision,
+    ) -> TravelPlanOutput:
+        prompt = f"""
+用户需求：
+{user_input}
+
+Think 阶段计划：
+{plan.model_dump_json(indent=2)}
+
+Act 阶段副 Agent 观察结果：
+{json.dumps([item.model_dump() for item in observations], ensure_ascii=False, indent=2)}
+
+Observe 阶段判断：
+{decision.model_dump_json(indent=2)}
+
+请生成最终面向用户的 TravelPlanOutput。
+"""
+        result = self.final_agent.run_sync(prompt, message_history=self.message_history)
+        self.message_history = result.all_messages()
+        return result.output
+
+    def direct_answer(self, user_input: str, plan: PlanOutput) -> TravelPlanOutput:
+        prompt = f"""
+用户输入：
+{user_input}
+
+Think 阶段判断：
+{plan.model_dump_json(indent=2)}
+
+这是无需调用副 Agent 的普通回复，请用 TravelPlanAgent 身份自然回答。
+"""
+        result = self.final_agent.run_sync(prompt, message_history=self.message_history)
+        self.message_history = result.all_messages()
+        return result.output
+
+    def build_sub_agent_prompt(
+        self,
+        task: SubTask,
+        user_input: str,
+        observations: list[SubAgentOutput],
+    ) -> str:
+        return f"""
+用户原始需求：
+{user_input}
+
+当前子任务：
+{task.model_dump_json(indent=2)}
+
+已有观察结果：
+{json.dumps([item.model_dump() for item in observations], ensure_ascii=False, indent=2)}
+
+请完成你的职责，并输出 SubAgentOutput。
+"""
+
+
+def run_agent(user_input: str, conversation_agent: TravelPlanAgent | None = None) -> str:
+    agent = conversation_agent or TravelPlanAgent()
+    output = agent.run(user_input)
+    return output.to_markdown()
+
+
+def main() -> None:
+    print("TravelPlanAgent v0.9：Pydantic AI 版 Think-Act-Observe + Multi-Agent")
+    print("请先安装：pip install pydantic-ai")
+    print("请设置环境变量：TRAVEL_AGENT_API_KEY、TRAVEL_AGENT_BASE_URL、TRAVEL_AGENT_MODEL")
+    print("输入 exit、quit 或 退出 可以结束对话。")
+
+    try:
+        agent = TravelPlanAgent()
+    except RuntimeError as error:
+        print(f"TravelPlanAgent：{error}")
+        return
+
+    while True:
+        try:
+            user_input = input("\n你：").strip()
+        except EOFError:
+            print("\nTravelPlanAgent：输入已结束，下次旅行再见！")
+            break
+        if user_input.lower() in ["exit", "quit"] or user_input == "退出":
+            print("TravelPlanAgent：下次旅行再见！")
+            break
+
+        try:
+            output = agent.run(user_input)
+        except Exception as error:
+            print(f"TravelPlanAgent：运行出错：{error}")
+            continue
+        print(f"TravelPlanAgent：\n{output.to_markdown()}")
+
+
+if __name__ == "__main__":
+    main()

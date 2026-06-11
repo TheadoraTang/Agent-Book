@@ -39,7 +39,7 @@ class LLMConfig:
     """集中管理模型调用参数，对应课程中的 API 调用基础。"""
 
     base_url: str = "https://chat.ecnu.edu.cn/open/api/v1"
-    api_key: str = "sk-4b905783f8ab4fed9f7c1879aaf2ae58"
+    api_key: str = ""
     model_name: str = "ecnu-max"
     temperature: float = 0.7
     timeout_seconds: int = 300
