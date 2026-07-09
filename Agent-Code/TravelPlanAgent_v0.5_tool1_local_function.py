@@ -49,19 +49,14 @@ class LLMClient:
 
     def chat(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
         if self.config.api_key in ["", "YOUR_API_KEY"]:
-            return "请先把 LLMConfig 里的 api_key 替换成真实密钥。"
+            raise RuntimeError("请先把 LLMConfig 里的 api_key 替换成真实密钥。")
 
-        try:
-            completion = self._get_openai_client().chat.completions.create(
-                model=self.config.model_name,
-                messages=messages,
-                temperature=self.config.temperature if temperature is None else temperature,
-            )
-            return completion.choices[0].message.content or ""
-        except ImportError:
-            return "当前环境缺少 openai 包，请先运行：pip install openai"
-        except Exception as error:
-            return f"调用模型时出现错误：{error}"
+        completion = self._get_openai_client().chat.completions.create(
+            model=self.config.model_name,
+            messages=messages,
+            temperature=self.config.temperature if temperature is None else temperature,
+        )
+        return completion.choices[0].message.content or ""
 
     def _get_openai_client(self) -> object:
         if self.openai_client is None:

@@ -82,20 +82,15 @@ class LLMClient:
 
     def chat(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
         if self.config.api_key in ["", "YOUR_API_KEY"]:
-            return "请先把 LLMConfig 里的 api_key 替换成真实密钥。"
+            raise RuntimeError("请先把 LLMConfig 里的 api_key 替换成真实密钥。")
 
-        try:
-            openai_client = self._get_openai_client()
-            completion = openai_client.chat.completions.create(
-                model=self.config.model_name,
-                messages=messages,
-                temperature=self.config.temperature if temperature is None else temperature,
-            )
-            return completion.choices[0].message.content or ""
-        except ImportError:
-            return "当前环境缺少 openai 包，请先运行：pip install openai"
-        except Exception as error:
-            return f"调用模型时出现错误：{error}"
+        openai_client = self._get_openai_client()
+        completion = openai_client.chat.completions.create(
+            model=self.config.model_name,
+            messages=messages,
+            temperature=self.config.temperature if temperature is None else temperature,
+        )
+        return completion.choices[0].message.content or ""
 
     def _get_openai_client(self) -> object:
         if self.openai_client is not None:
@@ -188,8 +183,7 @@ class WeatherApiTool(BaseTool):
             with urllib.request.urlopen(url, timeout=20) as response:
                 data = json.loads(response.read().decode("utf-8"))
         except Exception as error:
-            content = f"天气 API 调用失败：{error}"
-            return ToolResult(self.name, self.function_name, city, self.description, content)
+            raise RuntimeError("天气 API 调用失败。") from error
 
         current = data.get("current", {})
         weather_code = current.get("weather_code")

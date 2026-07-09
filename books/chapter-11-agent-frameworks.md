@@ -1,8 +1,22 @@
 # 第11章 Agent 框架与工具链：用 Pydantic AI 重构 TravelPlanAgent
 
+## 本章摘要
+
+### 新概念
+
+- **Agent 框架**：把工具注册、依赖传递、输出校验这些重复活儿收进一套运行时。
+- **LangChain**：生态很大，适合快速串模型、工具和流程。
+- **LlamaIndex**：更偏数据和 RAG，适合围绕知识库做应用。
+- **Pydantic AI**：用类型和校验把 Python Agent 的输入输出管清楚。
+
+### 产品功能增量
+
+- 本章会把 TravelPlanAgent 升级到 v0.9。它保留 Think-Act-Observe 和 Multi-Agent，但把工具、依赖和结构化结果交给 Pydantic AI 管理。
+
+
 ## 对 TravelPlanAgent 来说意味着什么
 
-到第 10 章，TravelPlanAgent 已经具备了完整旅行规划能力：
+到第 10 章，TravelPlanAgent 已经像一个真正的 Agent 了：
 
 - 能维护多轮上下文；
 - 能调用本地函数、天气 API 和 web_search；
@@ -10,11 +24,7 @@
 - 能把复杂任务拆成子任务；
 - 能用轻量 Multi-Agent 和 Reflection 生成完整行程。
 
-这已经像一个真正的 Agent 了。
-
-但它还有一个越来越明显的问题：**我们手写了太多 Agent 运行时本身应该负责的代码。**
-
-例如：
+不过你应该也感觉到了：为了看清 Agent 的骨架，我们前面手写了很多运行时细节。
 
 ```text
 手写 ToolResult
@@ -26,19 +36,16 @@
 手写错误降级
 ```
 
-这些代码不是没有价值。前面逐章手写它们，是为了让你看清 Agent 的骨架。
+这些代码很有学习价值。前面逐章手写它们，是为了让你知道 Agent 不是一团黑盒。但真实项目里，我们通常不会永远手搓这些重复结构。
 
-但如果进入真实项目，我们通常不会永远手搓所有运行时细节。成熟框架的作用，就是把常见结构沉淀下来，让开发者把精力放回业务目标。
-
-第 11 章会让 TravelPlanAgent 升级到 v0.9：
+第 11 章会把 TravelPlanAgent 升级到 v0.9：
 
 ```text
 一个基于 Pydantic AI 的 Think-Act-Observe + Multi-Agent 版本 TravelPlanAgent
 ```
 
-它不会推翻前面的知识，也不是把 v0.8 简化成“单 Agent 加几个工具”。恰恰相反，v0.9 要保留 v0.8 的核心架构：主 Agent 仍然会经历 `Think → Act → Observe → Final`，仍然会调度多个副 Agent，只是这些 Agent 的输入输出、工具注册、依赖传递和结构化结果由 Pydantic AI 管理得更规范。
+框架不是来替你理解 Agent 的。它更像一套整理好的工具箱：当你已经知道锤子、螺丝刀、尺子分别做什么，再用工具箱就会省事很多。
 
----
 
 ## 本章目标
 
@@ -119,7 +126,7 @@ web_search 工具需要搜索 API 地址
 
 成熟框架通常会提供一种“依赖注入”的方式：运行 Agent 时把依赖对象传进去，工具需要时再从上下文里读取。
 
-### 框架不是魔法，而是运行时
+### 框架是常见运行时
 
 Agent 框架可以理解为一个运行时。
 
@@ -137,7 +144,7 @@ Prompt / Instructions
 运行事件
 ```
 
-我们不是因为“框架高级”才使用框架，而是因为框架能把重复结构收起来，让业务代码更清楚。
+使用框架的理由很朴素：它能收起重复结构，让业务代码更清楚。
 
 <!-- sbs-image:width=840px -->
 
@@ -336,13 +343,13 @@ class TravelPlanOutput(BaseModel):
     follow_up_questions: list[str] = Field(default_factory=list)
 ```
 
-这样，模型最终不是“随便写一段文本”，而是要生成符合 `TravelPlanOutput` 的结果。
+这样，模型最终要生成符合 `TravelPlanOutput` 的结果，而不能随便写一段文本交差。
 
 根据 Pydantic AI 官方文档，`output_type` 可以使用 Pydantic model、dataclass、TypedDict 等类型；框架会保留输出类型信息，并对结果进行校验。
 
 这里有一个真实工程里很常见的兼容问题。
 
-Pydantic AI 默认会使用 **Tool Output** 模式来生成结构化输出。也就是说，框架会把最终输出结构包装成一个“输出工具”，并要求模型调用它。这种方式对很多模型很好用，但有些 OpenAI-compatible 模型，尤其是某些 thinking / reasoning 模式，会拒绝 `tool_choice=required` 或对象形式的 `tool_choice`。
+Pydantic AI 默认会使用 **Tool Output** 模式来生成结构化输出。框架会把最终输出结构包装成一个“输出工具”，并要求模型调用它。这种方式对很多模型很好用，但有些 OpenAI-compatible 模型，尤其是某些 thinking / reasoning 模式，会拒绝 `tool_choice=required` 或对象形式的 `tool_choice`。
 
 如果你运行时看到类似错误：
 
@@ -570,7 +577,7 @@ self.sub_agents = {
 }
 ```
 
-这段代码说明：v0.9 不是把所有能力塞进一个超级 Agent，而是把 v0.8 的主/副 Agent 结构保留下来，只是每个 Agent 都由 Pydantic AI 管理。
+这段代码说明：v0.9 会保留 v0.8 的主/副 Agent 结构，并让每个 Agent 交给 Pydantic AI 管理。
 
 它包含了很多前面章节的知识：
 
@@ -763,26 +770,18 @@ TravelPlanAgent 到 v0.9 正好处在这个阶段。
 
 ## 小结
 
-这一章我们完成了 TravelPlanAgent 的一次重要升级：
+到这里，TravelPlanAgent 完成了一次框架化重写。
 
-- 从手写 Agent 运行逻辑，过渡到成熟框架实现；
-- 理解了 Agent 框架的价值不是“神秘能力”，而是管理重复结构；
-- 认识了 LangChain、LlamaIndex、Pydantic AI 的不同侧重点；
-- 使用 Pydantic AI 的 `Agent`、`@agent.tool`、`RunContext`、`deps_type` 和 `output_type` 重构 v0.9；
-- 保留了 v0.8 的 Think-Act-Observe 主流程和 Multi-Agent 分工；
-- 让 TravelPlanAgent 的最终输出变成可校验、可处理、可展示的 Pydantic 对象。
+你可以把这次升级理解为：前面我们手工搭了一辆车，是为了看清方向盘、轮子、刹车和发动机都在哪里；现在开始使用成熟框架，是为了把重复零件交给更稳定的结构管理。
+
+这一章你已经见过：
+
+- LangChain、LlamaIndex、Pydantic AI 各自适合什么；
+- Pydantic AI 的 `Agent`、`@agent.tool`、`RunContext`、`deps_type` 和 `output_type`；
+- 如何保留 v0.8 的 Think-Act-Observe 主流程；
+- 如何保留主 Agent 与多个子 Agent 的分工；
+- 如何让最终输出变成可校验、可处理、可展示的 Pydantic 对象。
 
 到这里，TravelPlanAgent 已经从一个命令行聊天程序，成长为一个具备工具、检索、任务规划和框架化结构的完整 Agent。
 
-后面的章节会进入更高级的主题：Memory 和 Monitoring。
-
-那时我们关注的不只是“Agent 能不能完成任务”，而是：
-
-```text
-它能不能长期记住用户偏好？
-它运行得是否可靠？
-出了问题能不能追踪？
-上线之后能不能持续改进？
-```
-
-这也是 Agent 从课程项目走向真实系统时必须跨过的一道门。
+后面的章节会进入更高级的主题：Memory 和 Monitoring。那时我们关心的就不只是“这次任务能不能完成”，还包括：它能不能长期记住用户偏好，运行得是否可靠，出了问题能不能追踪。

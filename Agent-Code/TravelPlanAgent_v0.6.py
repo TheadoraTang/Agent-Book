@@ -94,21 +94,16 @@ class LLMClient:
         tool_choice: str | None = None,
     ) -> dict[str, object]:
         if self.config.api_key in ["", "YOUR_API_KEY"]:
-            return {"role": "assistant", "content": "请先把 LLMConfig 里的 api_key 替换成真实密钥。"}
+            raise RuntimeError("请先把 LLMConfig 里的 api_key 替换成真实密钥。")
 
-        try:
-            completion = self._get_openai_client().chat.completions.create(
-                model=self.config.model_name,
-                messages=messages,
-                temperature=self.config.temperature if temperature is None else temperature,
-                tools=tools,
-                tool_choice=tool_choice,
-            )
-            return self.message_to_dict(completion.choices[0].message)
-        except ImportError:
-            return {"role": "assistant", "content": "当前环境缺少 openai 包，请先运行：pip install openai"}
-        except Exception as error:
-            return {"role": "assistant", "content": f"调用模型时出现错误：{error}"}
+        completion = self._get_openai_client().chat.completions.create(
+            model=self.config.model_name,
+            messages=messages,
+            temperature=self.config.temperature if temperature is None else temperature,
+            tools=tools,
+            tool_choice=tool_choice,
+        )
+        return self.message_to_dict(completion.choices[0].message)
 
     def chat(self, messages: list[dict[str, object]], temperature: float | None = None) -> str:
         response = self.chat_response(messages, temperature=temperature)
@@ -230,7 +225,7 @@ class WeatherApiTool(BaseTool):
             with urllib.request.urlopen(url, timeout=20) as response:
                 data = json.loads(response.read().decode("utf-8"))
         except Exception as error:
-            return ToolResult(self.name, self.function_name, f"天气 API 调用失败：{error}", False)
+            raise RuntimeError("天气 API 调用失败。") from error
 
         current = data.get("current", {})
         weather_code = current.get("weather_code")
@@ -274,9 +269,9 @@ class WebSearchTool(BaseTool):
                 data = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as error:
             detail = error.read().decode("utf-8", errors="ignore")
-            return ToolResult(self.name, self.function_name, f"web_search API 请求失败，状态码：{error.code}\n{detail}", False)
+            raise RuntimeError(f"web_search API 请求失败，状态码：{error.code}\n{detail}") from error
         except Exception as error:
-            return ToolResult(self.name, self.function_name, f"web_search 调用失败：{error}", False)
+            raise RuntimeError("web_search 调用失败。") from error
 
         results = data.get("results", [])[:3]
         lines = ["web_search 搜索 API：searchfree.site", f"搜索词：{query}"]
@@ -297,8 +292,8 @@ class WebSearchTool(BaseTool):
 def parse_tool_arguments(arguments_text: str) -> dict[str, object]:
     try:
         return json.loads(arguments_text or "{}")
-    except json.JSONDecodeError:
-        return {}
+    except json.JSONDecodeError as error:
+        raise ValueError("工具参数不是合法 JSON。") from error
 
 
 class TravelPlanAgent:

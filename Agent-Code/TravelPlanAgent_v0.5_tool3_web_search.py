@@ -56,7 +56,7 @@ class LLMClient:
 
     def chat(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
         if self.config.api_key in ["", "YOUR_API_KEY"]:
-            return "请先把 LLMConfig 里的 api_key 替换成真实密钥。"
+            raise RuntimeError("请先把 LLMConfig 里的 api_key 替换成真实密钥。")
 
         for attempt in range(2):
             try:
@@ -72,11 +72,11 @@ class LLMClient:
                     logger.warning("Error: 模型调用超时，等待 2 秒后重试一次...")
                     time.sleep(2)
                     continue
-                return f"调用模型超时：{error}。可以稍后重试，或减少搜索结果数量。"
+                raise TimeoutError("调用模型超时。可以稍后重试，或减少搜索结果数量。") from error
             except Exception as error:
-                return f"调用模型时出现错误：{error}"
+                raise RuntimeError("调用模型时出现错误。") from error
 
-        return "调用模型时出现错误：未知错误。"
+        raise RuntimeError("调用模型时出现错误：未知错误。")
 
     def _get_openai_client(self) -> object:
         if self.openai_client is not None:
@@ -170,11 +170,9 @@ class WebSearchTool(BaseTool):
                 data = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as error:
             detail = error.read().decode("utf-8", errors="ignore")
-            content = f"web_search API 请求失败，状态码：{error.code}\n{detail}"
-            return ToolResult(self.name, self.function_name, query_text, self.description, content)
+            raise RuntimeError(f"web_search API 请求失败，状态码：{error.code}\n{detail}") from error
         except Exception as error:
-            content = f"web_search 调用失败：{error}"
-            return ToolResult(self.name, self.function_name, query_text, self.description, content)
+            raise RuntimeError("web_search 调用失败。") from error
 
         results = data.get("results", [])[:3]
         lines = ["web_search 搜索 API：searchfree.site", f"搜索词：{query}"]
