@@ -1,0 +1,53 @@
+book_name: "Agent-Book"
+book_author: "TheadoraTang"
+book_introduction: "Agent-Book是一本关于Agent的书籍，旨在介绍Agent的基础知识、构建方法和应用场景。通过本书，读者将能够了解Agent的原理、设计和实现，并能够使用Agent来解决实际问题。"
+
+chapters:
+  - name: "引言"
+    path: chapter-00-introduction.md
+  - name: "第一章 学会与LLM协作"
+    chapters:
+      - name: "LLM基础"
+        path: chapter-01-llm-basics.md
+      - name: "API调用原理"
+        path: chapter-02-api-calling.md
+      - name: "练习1：补全 LLM 调用"
+        path: v0.1-llm-call.md
+      - name: "Prompt Engineering提示词工程"
+        path: chapter-03-prompt-engineering.md
+      - name: "练习2：组装 System Prompt 和 User Prompt"
+        path: v0.2-prompt-messages.md
+      - name: "Structured Output结构化输出"
+        path: chapter-04-structured-output.md
+      - name: "练习3：解析结构化 JSON 输出"
+        path: v0.3-structured-output.md
+  - name: "第二章 基础Agent构建"
+    chapters:
+      - name: "Agent概述"
+        path: chapter-05-agent-overview.md
+      - name: "Token与上下文机制"
+        path: chapter-06-token-and-context.md
+      - name: "练习4：串联上下文记忆"
+        path: v0.4-conversation-memory.md
+      - name: "Tool Calling 工具调用"
+        path: chapter-07-tool-calling.md
+      - name: "练习5：根据用户问题选择 Tools"
+        path: v0.5-tool-selection.md
+      - name: "Agent 工作原理"
+        path: chapter-08-agent-loop.md
+      - name: "练习6：执行 Tool Call"
+        path: v0.6-think-act-observe.md
+      - name: "RAG(Retrieval-Augmented Generation)"
+        path: chapter-09-rag.md
+      - name: "练习7：完成 RAG Top-K 检索"
+        path: v0.7-rag-retrieval.md
+      - name: "Agent 工作原理"
+        path: chapter-10-agent-architecture.md
+      - name: "练习8：调度 Multi-Agent 子任务"
+        path: v0.8-multi-agent-dispatch.md
+  - name: "第三章 使用成熟Agent框架"
+    chapters:
+      - name: "Agent 框架与工具链"
+        path: chapter-11-agent-frameworks.md
+      - name: "练习9：使用pydantic框架实现agent"
+        path: v0.9-pydantic-ai-orchestration.md

@@ -1,24 +1,14 @@
-# v0.1 练习：补全 LLM 调用
-
-
-```sbs-exercise
-title: v0.1 练习：补全 LLM 调用
-kind: completion
-language: python
-judgeMode: runSuccess
-description: |
-  补全 LLMClient.chat() 中的核心模型调用。base_url、api_key、model_name 已经保留，不需要调整模型配置。
-code: |
-from __future__ import annotations
-
+<!-- sbs-code -->
+```python
 from openai import OpenAI
+
 
 class LLMConfig:
     """
     集中保存模型调用需要的配置：base_url、api_key、model_name。
     """
     base_url: str = "http://106.15.43.196:3001/v1"
-    api_key: str = ""
+    api_key: str = "sk-6lFpmAR6oAR3CNGeedvlkOce7cmzCiPQbRjJ7pFsSKzXOLvD"
     model_name: str = "deepseek-v4-pro"
     temperature: float = 0.7
     timeout_seconds: int = 300
@@ -35,12 +25,21 @@ class LLMClient:
 
     def chat(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
         if self.config.api_key in ["", "YOUR_API_KEY"]:
-            raise RuntimeError("请先把 LLMConfig 里的 api_key 替换成真实密钥。")
+            return "请先把 LLMConfig 里的 api_key 替换成真实密钥。"
 
-        openai_client = self._get_openai_client()
-        # BEGIN_SOLUTION
-        pass
-        # END_SOLUTION
+        try:
+            openai_client = self._get_openai_client()
+            completion = openai_client.chat.completions.create(
+                model=self.config.model_name,
+                messages=messages,
+                temperature=self.config.temperature if temperature is None else temperature,
+            )
+            return completion.choices[0].message.content or ""
+        except ImportError:
+            return "当前环境缺少 openai 包，请先运行：pip install openai"
+        except Exception as error:
+            return f"调用模型时出现错误：{error}"
+
     def _get_openai_client(self) -> object:
         if self.openai_client is not None:
             return self.openai_client
@@ -84,4 +83,9 @@ def main() -> None:
     agent = TravelPlanAgent()
     answer = agent.run(user_input)
     print(f"TravelPlanAgent：{answer}")
+
+
+if __name__ == "__main__":
+    main()
+
 ```
