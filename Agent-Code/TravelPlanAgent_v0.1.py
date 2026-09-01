@@ -6,7 +6,7 @@ class LLMConfig:
     集中保存模型调用需要的配置：base_url、api_key、model_name。
     """
     base_url: str = "http://106.15.43.196:3001/v1"
-    api_key: str = ""
+    api_key: str = "sk-mpXFJjd8BJm4ReqMmHScLqQZ9oCxjp29p3Ku2XYrEXGvFvGe"
     model_name: str = "deepseek-v4-pro"
     temperature: float = 0.7
     timeout_seconds: int = 300
