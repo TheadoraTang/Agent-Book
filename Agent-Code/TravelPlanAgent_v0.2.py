@@ -17,9 +17,9 @@ class LLMConfig:
     """
     集中保存模型调用需要的配置：base_url、api_key、model_name。
     """
-    base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    base_url: str = AI_BASE_URL
     api_key: str = ""
-    model_name: str = "deepseek-v4-flash"
+    model_name: str = AI_MODEL_NAME
     temperature: float = 0.7
     timeout_seconds: int = 300
 

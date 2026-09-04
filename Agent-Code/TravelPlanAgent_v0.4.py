@@ -18,9 +18,9 @@ SYSTEM_PROMPT = """
 class LLMConfig:
     """集中管理模型调用参数，对应课程中的 API 调用基础。"""
 
-    base_url: str = "https://chat.ecnu.edu.cn/open/api/v1"
+    base_url: str = AI_BASE_URL
     api_key: str = ""
-    model_name: str = "ecnu-plus"
+    model_name: str = AI_MODEL_NAME
     temperature: float = 0.7
     timeout_seconds: int = 300
 

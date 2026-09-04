@@ -162,9 +162,9 @@ class TravelPlanOutput(BaseModel):
 
 @dataclass
 class LLMConfig:
-    base_url: str = field(default_factory=lambda: os.getenv("TRAVEL_AGENT_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"))
+    base_url: str = AI_BASE_URL
     api_key: str = field(default_factory=lambda: os.getenv("TRAVEL_AGENT_API_KEY", ""))
-    model_name: str = field(default_factory=lambda: os.getenv("TRAVEL_AGENT_MODEL", "deepseek-v4-flash"))
+    model_name: str = AI_MODEL_NAME
 
 
 @dataclass
@@ -577,7 +577,7 @@ def run_agent(user_input: str, conversation_agent: TravelPlanAgent | None = None
 def main() -> None:
     print("TravelPlanAgent v0.9：Pydantic AI 版 Think-Act-Observe + Multi-Agent")
     print("请先安装：pip install pydantic-ai")
-    print("请设置环境变量：TRAVEL_AGENT_API_KEY、TRAVEL_AGENT_BASE_URL、TRAVEL_AGENT_MODEL")
+    print("模型配置由运行环境提供：AI_BASE_URL、AI_MODEL_NAME")
     print("输入 exit、quit 或 退出 可以结束对话。")
 
     agent = TravelPlanAgent()
